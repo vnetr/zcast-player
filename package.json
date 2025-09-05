@@ -1,0 +1,73 @@
+{
+  "name": "zcast-player",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "build/electron/main.js",
+  "scripts": {
+    "dev": "npm run build:electron && concurrently -k -n VITE,ELECTRON \"vite\" \"wait-on http://localhost:5173 && cross-env VITE_DEV=1 electron build/electron/main.js\"",
+    "build:app": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json",
+    "build": "rimraf build && npm run build:app && npm run build:electron",
+    "start": "electron build/electron/main.js",
+    "dist": "npm run build && electron-builder --publish never"
+  },
+  "build": {
+    "appId": "com.zignage.zcastplayer",
+    "productName": "zcast-player",
+    "executableName": "zcast-player",
+    "files": [
+      "dist/**",
+      "build/electron/**",
+      "package.json"
+    ],
+    "asar": true,
+
+    "extraResources": [
+      { "from": "src/mock", "to": "mock" }
+    ],
+
+    "directories": {
+      "output": "release",
+      "buildResources": "packaging"
+    },
+
+    "linux": {
+      "target": ["deb"],
+      "category": "Video",
+      "artifactName": "zcast-player_${version}_${arch}.${ext}"
+    },
+    "deb": {
+      "depends": [
+        "libnss3", "libxss1", "libasound2",
+        "libatk1.0-0", "libatk-bridge2.0-0",
+        "libgtk-3-0", "libgbm1", "libx11-xcb1",
+        "libxdamage1", "libxrandr2"
+      ],
+      "afterInstall": "linux/after-install.sh"
+    }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/luxon": "^3.7.1",
+    "@zignage/layout-renderer": "^5.0.3-2.2-lcpa",
+    "compression": "^1.8.1",
+    "dotenv": "^17.2.1",
+    "electron": "^37.4.0",
+    "express": "^5.1.0",
+    "lit": "^3.3.1",
+    "luxon": "^3.7.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.0.0",
+    "electron-builder": "^26.0.12",
+    "rimraf": "^6.0.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3",
+    "wait-on": "^8.0.4"
+  }
+}

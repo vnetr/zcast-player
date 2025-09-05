@@ -1,0 +1,187 @@
+{
+  "name": "New Schedule - Hello World",
+  "type": "layout",
+  "group": "Default Group",
+  "player": "default",
+  "recipe": {
+    "events": [
+      {
+        "start": "2025-09-03T19:31:25.565Z",
+        "duration": "forever",
+        "playlist": {
+          "media_templates": [
+            {
+              "params": {
+                "id": "9cce2e64-f89b-4ba0-8c3b-c7f64e4deea9",
+                "name": "Hello World",
+                "type": "layout",
+                "props": {
+                  "width": 1920,
+                  "height": 1080,
+                  "background": "#000000"
+                },
+                "status": "ffffffff-ffff-ffff-ffff-fffffffffffe",
+                "options": {
+                  "end": 0,
+                  "start": 0,
+                  "locked": false,
+                  "visible": true,
+                  "duration": 0,
+                  "selected": false
+                },
+                "version": 1,
+                "children": [
+                  {
+                    "id": "67648a68-291e-4f5e-9f7d-0c1b03d0e80f",
+                    "name": "Text",
+                    "type": "text",
+                    "props": {
+                      "x": 249,
+                      "y": 307,
+                      "clip": {
+                        "top": 0,
+                        "left": 0,
+                        "right": 0,
+                        "bottom": 0
+                      },
+                      "width": 1347,
+                      "border": {
+                        "radius": 0,
+                        "lineColor": "transparent",
+                        "lineStyle": "solid",
+                        "lineWidth": 0
+                      },
+                      "height": 553,
+                      "filters": {},
+                      "opacity": 1,
+                      "transform": {
+                        "skew": {
+                          "x": 0,
+                          "y": 0
+                        },
+                        "scale": {
+                          "x": 100,
+                          "y": 100
+                        },
+                        "rotate": 0
+                      },
+                      "background": "transparent"
+                    },
+                    "content": {
+                      "mode": "static",
+                      "options": {
+                        "color": "#ffffff",
+                        "shadow": {
+                          "hidden": true,
+                          "options": {
+                            "blur": 10,
+                            "angle": 45,
+                            "color": "#000000",
+                            "offset": 10,
+                            "opacity": 100
+                          }
+                        },
+                        "opacity": 1,
+                        "padding": {
+                          "top": 0,
+                          "left": 0,
+                          "right": 0,
+                          "bottom": 0
+                        },
+                        "animation": "none",
+                        "typography": {
+                          "fontSize": 200,
+                          "fontStyle": "normal",
+                          "textAlign": "left",
+                          "fontFamily": "Arial",
+                          "fontWeight": "normal",
+                          "lineHeight": "normal",
+                          "letterSpacing": 0,
+                          "textTransform": "none",
+                          "verticalAlign": "top",
+                          "textDecoration": "none"
+                        },
+                        "animationIn": "none",
+                        "animationOut": "none"
+                      },
+                      "text-options-static": {
+                        "text": "<p>Hello, World!</p>"
+                      },
+                      "text-options-dynamic": {
+                        "fallback": "Hello, World!",
+                        "data-source": {
+                          "port": "80",
+                          "route": "",
+                          "domain": "",
+                          "value-path": "",
+                          "refresh-rate": "60"
+                        }
+                      }
+                    },
+                    "options": {
+                      "end": 1000,
+                      "start": 0,
+                      "locked": false,
+                      "visible": true,
+                      "selected": false
+                    }
+                  }
+                ],
+                "editorData": {
+                  "currentTimestamp": 0
+                }
+              },
+              "asset_id": "9cce2e64-f89b-4ba0-8c3b-c7f64e4deea9",
+              "duration_seconds": 86400
+            }
+          ]
+        },
+        "priority": 2,
+        "timeZone": "America/New_York",
+        "recurrenceRules": [
+          {
+            "byDay": [
+              {
+                "day": "mo",
+                "nthOfPeriod": 1
+              },
+              {
+                "day": "tu",
+                "nthOfPeriod": 1
+              },
+              {
+                "day": "we",
+                "nthOfPeriod": 1
+              },
+              {
+                "day": "th",
+                "nthOfPeriod": 1
+              },
+              {
+                "day": "fr",
+                "nthOfPeriod": 1
+              },
+              {
+                "day": "sa",
+                "nthOfPeriod": 1
+              },
+              {
+                "day": "su",
+                "nthOfPeriod": 1
+              }
+            ],
+            "until": "2025-09-05T03:59:59.999Z",
+            "frequency": "daily"
+          }
+        ]
+      }
+    ]
+  },
+  "status": "7372754d-6de7-452b-a882-e49ca7afe7fd",
+  "canvasId": "b6556ff1-5ecd-4e7e-a2eb-46554b17b242",
+  "deviceId": "45f254bf-8aaf-484d-ac96-b86ea9bb6f43",
+  "layoutId": "9cce2e64-f89b-4ba0-8c3b-c7f64e4deea9",
+  "inceptNow": true,
+  "expireNever": true,
+  "scheduleName": "New Schedule - Hello World"
+}
