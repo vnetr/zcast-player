@@ -1,5 +1,5 @@
 // renderer/index.ts
-import '@zignage/layout-renderer';
+import './vendor/zlr-shim.js';
 import { pickActiveContent } from './schedule';
 
 type LayoutRendererEl = HTMLElement & {
