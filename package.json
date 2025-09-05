@@ -22,27 +22,35 @@
       "package.json"
     ],
     "asar": true,
-
     "extraResources": [
-      { "from": "src/mock", "to": "mock" }
+      {
+        "from": "src/mock",
+        "to": "mock"
+      }
     ],
-
     "directories": {
       "output": "release",
       "buildResources": "packaging"
     },
-
     "linux": {
-      "target": ["deb"],
+      "target": [
+        "deb"
+      ],
       "category": "Video",
       "artifactName": "zcast-player_${version}_${arch}.${ext}"
     },
     "deb": {
       "depends": [
-        "libnss3", "libxss1", "libasound2",
-        "libatk1.0-0", "libatk-bridge2.0-0",
-        "libgtk-3-0", "libgbm1", "libx11-xcb1",
-        "libxdamage1", "libxrandr2"
+        "libnss3",
+        "libxss1",
+        "libasound2",
+        "libatk1.0-0",
+        "libatk-bridge2.0-0",
+        "libgtk-3-0",
+        "libgbm1",
+        "libx11-xcb1",
+        "libxdamage1",
+        "libxrandr2"
       ],
       "afterInstall": "linux/after-install.sh"
     }
@@ -65,6 +73,7 @@
     "electron": "^37.4.0",
     "electron-builder": "^26.0.12",
     "rimraf": "^6.0.1",
+    "terser": "^5.44.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2",
     "vite": "^7.1.3",
