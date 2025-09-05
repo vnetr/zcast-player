@@ -3,49 +3,19 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
-
+import { createHash } from 'crypto';
 // ---- ESM friendly __dirname ----
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
-
-app.commandLine.appendSwitch('enable-logging');
 
 // ---- Force GPU / HW accel on Linux ----
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
-//app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,CanvasOopRasterization');
+app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,CanvasOopRasterization');
 // 'egl' is usually best on modern Linux; swap to 'desktop' if a specific device needs it
 app.commandLine.appendSwitch('use-angle', 'gl-egl');
-//app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
-if (process.env.ZCAST_NO_GPU === '1') {
-  app.disableHardwareAcceleration();
-}
-
-function wireLogging(win: BrowserWindow) {
-  win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
-    const lvl = ['log','warn','error','debug','info'][level] ?? String(level);
-    console.log(`[renderer:${lvl}] ${message} (${sourceId}:${line})`);
-  });
-
-  win.webContents.on('preload-error', (_e, preloadPath, error) => {
-    console.error('[renderer:preload-error]', preloadPath, error?.message || error);
-  });
-
-  // Electron 13+: render-process-gone is the reliable crash signal
-  win.webContents.on('render-process-gone', (_e, details) => {
-    console.error('[renderer:gone]', details);
-  });
-
-  // Catch unhandled exceptions in main itself
-  process.on('uncaughtException', (err) => {
-    console.error('[main:uncaughtException]', err);
-  });
-  process.on('unhandledRejection', (reason) => {
-    console.error('[main:unhandledRejection]', reason);
-  });
-}
-
+app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
 
 let win: BrowserWindow | null = null;
 
@@ -133,14 +103,7 @@ app.whenReady().then(() => {
       return null;
     }
   });
-  ipcMain.on('zcast:console', (_e, payload) => {
-    const { level, args, ...rest } = (payload || {}) as any;
-    const line = `[renderer:${level ?? 'log'}] ${args ? args.join(' ') : ''} ${Object.keys(rest).length ? JSON.stringify(rest) : ''}`;
-    // Goes to stdout/stderr -> Supervisor log files
-    (level === 'error' || level === 'pageerror' || level === 'unhandledrejection'
-      ? console.error
-      : console.log)(line);
-  });
+
   // Watch for changes (rename|change) and push to renderer
   const startWatch = () => {
     const file = manifestFilePath();
@@ -173,7 +136,6 @@ app.whenReady().then(() => {
   };
 
   createWindow();
-  if (win) wireLogging(win);
   startWatch();
 
   app.on('activate', () => {
