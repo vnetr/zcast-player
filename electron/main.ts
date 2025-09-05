@@ -3,7 +3,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
-
+import { createHash } from 'crypto';
 // ---- ESM friendly __dirname ----
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -14,7 +14,7 @@ app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,CanvasOopRasterization');
 // 'egl' is usually best on modern Linux; swap to 'desktop' if a specific device needs it
-app.commandLine.appendSwitch('use-gl', 'egl');
+app.commandLine.appendSwitch('use-angle', 'gl-egl');
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
 
 let win: BrowserWindow | null = null;
@@ -85,6 +85,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+
   const mf = manifestFilePath();
   if (!mf) {
     console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specified. Dev HMR only.');
