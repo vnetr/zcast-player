@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
 // ---- ESM friendly __dirname ----
 const __filename = fileURLToPath(import.meta.url);
-const __dirname  = path.dirname(__filename);
+const __dirname = path.dirname(__filename);
 
 
 const toFileUrl = (p: string) => url.pathToFileURL(p).href;
@@ -88,27 +88,44 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  const distIndex = prodIndexHtml(); // you already have this function
+  const distIndex = prodIndexHtml();                      // e.g. /opt/.../app.asar/dist/index.html
   const distDir = distIndex ? path.dirname(distIndex) : '';
+  const resFonts = path.join(process.resourcesPath, 'fonts');
 
-  session.defaultSession.webRequest.onBeforeRequest({ urls: ['file:///*'] }, (details, cb) => {
-    if (!distDir) return cb({});
-    const m = details.url.match(/^file:\/\/(.+\/dist\/)index\.html\/fonts\/(.+)$/);
-    if (!m) return cb({});
-    const [, distPrefix, fontRel] = m;
-    const target = path.join(distPrefix, 'fonts', fontRel);
-    return cb({ redirectURL: toFileUrl(target) });
-  });
+  session.defaultSession.webRequest.onBeforeRequest(
+    { urls: ['*://*/*'] },                                // catch everything; we’ll filter inside
+    (details, callback) => {
+      try {
+        const u = new URL(details.url);
+        if (u.protocol !== 'file:') return callback({});  // only handle file://
 
-  // 2) map root-absolute /fonts/* → packaged resources fonts (outside asar)
-  session.defaultSession.webRequest.onBeforeRequest({ urls: ['file:///*'] }, (details, cb) => {
-    const m = details.url.match(/^file:\/\/\/fonts\/(.+)$/);
-    if (!m) return cb({});
-    const target = path.join(process.resourcesPath, 'fonts', m[1]);
-    return cb({ redirectURL: toFileUrl(target) });
-  });
+        const rawPath = u.pathname;                       // already decoded path
+        // 1) Fix ".../dist/index.html/fonts/<name>"  -> ".../dist/fonts/<name>"
+        const idxFrag = '/dist/index.html/fonts/';
+        const idxPos = rawPath.indexOf(idxFrag);
+        if (idxPos !== -1 && distDir) {
+          const fontRel = rawPath.slice(idxPos + idxFrag.length);  // "<name>"
+          const target = path.join(distDir, 'fonts', fontRel);
+          return callback({ redirectURL: toFileUrl(target) });
+        }
 
-  
+        // 2) Map root-absolute "/fonts/<name>" -> "<resources>/fonts/<name>"
+        //     (this covers code paths that emit absolute /fonts URLs)
+        if (rawPath.startsWith('/fonts/')) {
+          const fontRel = rawPath.slice('/fonts/'.length);
+          const target = path.join(resFonts, fontRel);
+          return callback({ redirectURL: toFileUrl(target) });
+        }
+
+        // else: no change
+        return callback({});
+      } catch {
+        return callback({});
+      }
+    }
+  );
+
+
   const mf = manifestFilePath();
   if (!mf) {
     console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specified. Dev HMR only.');
