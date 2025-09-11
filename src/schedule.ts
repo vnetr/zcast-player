@@ -18,52 +18,62 @@ function dayCodeFromLuxon(weekday: number): ByDayCode {
   return map[weekday];
 }
 
-// ----------------------------
-// NEW FORMAT (API list) utils
-// ----------------------------
-type ApiItem = {
-  doc_uuid?: string;
-  data?: {
-    inceptAt?: string;
-    expireAt?: string;
-    fromTime?: string;
-    toTime?: string;
-    days?: Array<{ day: unknown; nthOfPeriod?: number }>;
-    workingDays?: boolean;
-    weekend?: boolean;
-    priority?: number;
-    media?: any;
-    timeZone?: string;
-  };
+type NewItemData = {
+  inceptAt?: string;         // ISO
+  expireAt?: string;         // ISO
+  fromTime?: string;         // "HH:mm:ss.SSS"
+  toTime?: string;           // "HH:mm:ss.SSS"
+  days?: Array<{ day?: unknown; nthOfPeriod?: number }>;
+  workingDays?: boolean;
+  weekend?: boolean;
+  priority?: number;
+  media?: any;               // layout JSON
+  timeZone?: string;         // optional timezone per item
+  // other fields ignored
 };
 
-function normalizeToApiList(input: any): ApiItem[] | null {
-  if (looksLikeApiList(input)) return input;
-  if (looksLikeApiItem(input)) return [input];
-
-  if (looksLikeFlatList(input)) return (input as any[]).map(d => ({ data: d }));
-  if (looksLikeFlatItem(input)) return [{ data: input }];
-
-  return null; // not API-style; probably legacy manifest
+// ------------ normalizers (turn any new-API shape into NewItemData[]) ------------
+function looksLikeLegacy(x: any): boolean {
+  return x && typeof x === 'object' && x.recipe && Array.isArray(x.recipe.events);
 }
-
-
-function looksLikeApiItem(x: any): x is ApiItem {
+function looksLikeNestedItem(x: any): x is { data: NewItemData } {
   return x && typeof x === 'object' && x.data && typeof x.data === 'object' && 'media' in x.data;
 }
-
-function looksLikeApiList(x: any): x is ApiItem[] {
-  return Array.isArray(x) && x.length > 0 && looksLikeApiItem(x[0]);
+function looksLikeNestedList(x: any): x is Array<{ data: NewItemData }> {
+  return Array.isArray(x) && x.length > 0 && looksLikeNestedItem(x[0]);
 }
-// NEW: flattened item guards  (fields directly on the object)
-function looksLikeFlatItem(x: any): x is Required<ApiItem>['data'] {
+function looksLikeFlatItem(x: any): x is NewItemData {
   return x && typeof x === 'object' && 'media' in x && x.media && typeof x.media === 'object';
 }
-function looksLikeFlatList(x: any): x is Array<Required<ApiItem>['data']> {
+function looksLikeFlatList(x: any): x is NewItemData[] {
   return Array.isArray(x) && x.length > 0 && looksLikeFlatItem(x[0]);
 }
+
+function unwrapCommonWrappers(x: any): any {
+  // Some APIs wrap lists under {results: [...]}, {data: [...]}, {items: [...]}
+  if (x && typeof x === 'object') {
+    if (Array.isArray((x as any).results)) return (x as any).results;
+    if (Array.isArray((x as any).data))    return (x as any).data;
+    if (Array.isArray((x as any).items))   return (x as any).items;
+  }
+  return x;
+}
+
+function normalizeToNewDataList(input: any): NewItemData[] | null {
+  const x = unwrapCommonWrappers(input);
+
+  if (looksLikeNestedList(x)) return (x as Array<{data: NewItemData}>).map(r => r.data);
+  if (looksLikeNestedItem(x)) return [(x as {data: NewItemData}).data];
+
+  if (looksLikeFlatList(x))   return x as NewItemData[];
+  if (looksLikeFlatItem(x))   return [x as NewItemData];
+
+  return null; // not new-API
+}
+
+// -------------------------- helpers used by evaluator --------------------------
 function todaysWindow(now: DateTime, fromTime?: string, toTime?: string) {
-  // If missing, treat as 00:00:00 -> 23:59:59.999
+  // Default to full day
   const [fs='00',fm='00',fS='00', fms='000'] = (fromTime ?? '00:00:00.000').split(/[:.]/);
   const [ts='23',tm='59',tS='59', tms='999'] = (toTime ?? '23:59:59.999').split(/[:.]/);
   const start = now.set({ hour:+fs, minute:+fm, second:+fS, millisecond:+fms });
@@ -73,7 +83,7 @@ function todaysWindow(now: DateTime, fromTime?: string, toTime?: string) {
 
 function allowedTodayByFlags(
   today: ByDayCode,
-  itemDays?: Array<{ day: unknown; nthOfPeriod?: number }>,
+  itemDays?: Array<{ day?: unknown; nthOfPeriod?: number }>,
   workingDays?: boolean,
   weekend?: boolean
 ): boolean {
@@ -85,24 +95,22 @@ function allowedTodayByFlags(
     );
     return set.has(today);
   }
-  if (workingDays && weekend) return true;
+  if (workingDays && weekend) return true;                     // both → all days
   if (workingDays) return ['mo','tu','we','th','fr'].includes(today);
   if (weekend)     return ['sa','su'].includes(today);
-  return true;
+  return true;                                                 // no constraints
 }
 
-function pickFromApiList(list: ApiItem[], nowJS: Date = new Date()): ActivePick {
+// -------------------------- NEW format evaluator --------------------------
+function pickFromNewDataList(list: NewItemData[], nowJS: Date = new Date()): ActivePick {
   if (!Array.isArray(list) || list.length === 0) {
     return { kind: 'none', nextCheck: Date.now() + 60_000 };
   }
 
-  // Use item timeZone if provided; otherwise local TZ
   const tzDefault = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
-  const candidates = list.map((row, idx) => {
-    const d = row?.data ?? ({} as any);
+  const candidates = list.map((d, idx) => {
     const tz = d.timeZone || tzDefault;
-
     const now = DateTime.fromJSDate(nowJS).setZone(tz);
 
     const incept = d.inceptAt ? DateTime.fromISO(d.inceptAt, { zone: tz }) : null;
@@ -111,8 +119,8 @@ function pickFromApiList(list: ApiItem[], nowJS: Date = new Date()): ActivePick 
     const { start: dayStart, end: dayEnd } = todaysWindow(now, d.fromTime, d.toTime);
 
     const withinDates =
-      (!incept || now >= incept) &&
-      (!expire || now <= expire);
+      (!incept || (incept.isValid && now >= incept)) &&
+      (!expire || (expire.isValid && now <= expire));
 
     const todayCode = dayCodeFromLuxon(now.weekday);
     const allowedDay = allowedTodayByFlags(todayCode, d.days, d.workingDays, d.weekend);
@@ -121,37 +129,39 @@ function pickFromApiList(list: ApiItem[], nowJS: Date = new Date()): ActivePick 
 
     const active = withinDates && allowedDay && withinDayWindow;
 
-    // Next boundary to re-check:
-    // - if before incept: at incept
-    // - else if before today's start: at today's start
-    // - else if inside window: at today's end + 1ms
-    // - else if after today's end: next day's start (roughly +24h at same fromTime)
-    // - always clamp by expire if present
+    // Next boundary to re-check
     let nextCheck: DateTime | null = null;
-    if (incept && now < incept) nextCheck = incept;
-    else if (now < dayStart) nextCheck = dayStart;
-    else if (active) nextCheck = dayEnd.plus({ millisecond: 1 });
-    else {
-      // past today's window → tomorrow's start (best-effort)
+    if (incept && incept.isValid && now < incept)             nextCheck = incept;
+    else if (now < dayStart)                                  nextCheck = dayStart;
+    else if (active)                                          nextCheck = dayEnd.plus({ millisecond: 1 });
+    else { // tomorrow start (best-effort)
       const tomorrow = now.plus({ days: 1 });
       const { start: tomorrowStart } = todaysWindow(tomorrow, d.fromTime, d.toTime);
       nextCheck = tomorrowStart;
     }
-    if (expire && nextCheck > expire) nextCheck = expire.plus({ millisecond: 1 });
+    if (expire && expire.isValid && nextCheck > expire)       nextCheck = expire.plus({ millisecond: 1 });
 
     return {
       idx,
       active,
-      priority: Number(d.priority ?? 0),
       layout: d.media,
+      priority: Number(d.priority ?? 0),
       nextCheckMs: nextCheck?.toMillis() ?? (Date.now() + 60_000),
+      // diagnostics (useful during bring-up)
+      __why: { withinDates, allowedDay, withinDayWindow, tz, incept: incept?.toISO(), expire: expire?.toISO(),
+               fromTime: d.fromTime, toTime: d.toTime, today: todayCode }
     };
   });
 
   const nextCheck = Math.min(...candidates.map(c => c.nextCheckMs));
-
   const actives = candidates.filter(c => c.active && c.layout && c.layout.type === 'layout');
-  if (actives.length === 0) return { kind: 'none', nextCheck };
+
+  if (actives.length === 0) {
+    // Optional: uncomment for one-line diagnostics on the highest-priority item
+    // const top = candidates.sort((a,b) => (b.priority - a.priority) || (b.idx - a.idx))[0];
+    // console.info('[schedule:new] not active —', top?.__why);
+    return { kind: 'none', nextCheck };
+  }
 
   // Highest priority wins; tie-break: last defined wins
   actives.sort((a, b) => (b.priority - a.priority) || (b.idx - a.idx));
@@ -160,9 +170,7 @@ function pickFromApiList(list: ApiItem[], nowJS: Date = new Date()): ActivePick 
   return { kind: 'layout', layout: chosen.layout, nextCheck, reason: 'api-list+priority' };
 }
 
-// ----------------------------
-// OLD FORMAT (unchanged)
-// ----------------------------
+// -------------------------- legacy evaluator (unchanged) --------------------------
 function parseUntil(rule: any, tz: string): DateTime | null {
   const u = rule?.until;
   if (!u) return null;
@@ -205,16 +213,13 @@ function pickFromLegacyManifest(scheduleDoc: any, nowJS: Date = new Date()): Act
     else nextCheck = now.plus({ hours: 1 });
 
     return {
-      idx,
-      ev,
-      active,
+      idx, ev, active,
       priority: Number(ev?.priority ?? 0),
       nextCheckMs: nextCheck?.toMillis() ?? (Date.now() + 60_000),
     };
   });
 
   const nextCheck = Math.min(...candidates.map(c => c.nextCheckMs));
-
   const actives = candidates.filter(c => c.active);
   if (actives.length === 0) return { kind: 'none', nextCheck };
 
@@ -232,11 +237,11 @@ function pickFromLegacyManifest(scheduleDoc: any, nowJS: Date = new Date()): Act
   return { kind: 'layout', layout: layoutDoc, nextCheck, reason: 'event+priority' };
 }
 
-// ----------------------------
-// Entry point that supports BOTH
-// ----------------------------
+// -------------------------- entry point (supports ALL shapes) --------------------------
 export function pickActiveContent(input: any, nowJS: Date = new Date()): ActivePick {
-  const apiNorm = normalizeToApiList(input);
-  if (apiNorm) return pickFromApiList(apiNorm, nowJS);
-  return pickFromLegacyManifest(input, nowJS);
+  const newList = normalizeToNewDataList(input);
+  if (newList) return pickFromNewDataList(newList, nowJS);
+  if (looksLikeLegacy(input)) return pickFromLegacyManifest(input, nowJS);
+  // Unknown or empty → re-check in ~1min
+  return { kind: 'none', nextCheck: Date.now() + 60_000 };
 }
