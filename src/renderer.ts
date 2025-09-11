@@ -83,7 +83,7 @@ async function applySchedule(doc: any) {
   if (pick.kind === 'layout') {
     const el = await ensureRenderer();
     el.document = pick.layout;
-    try { await el.play(); } catch {}
+    try { await el.play(); } catch { }
     console.info('[zcast] Mounted layout from active event. Next check at', new Date(pick.nextCheck).toISOString());
   } else {
     console.info('[zcast] No active event right now. Next check at', new Date(pick.nextCheck).toISOString());
@@ -114,6 +114,10 @@ async function boot() {
   } else {
     // Prod: read local file via preload
     const json = await window.zcast?.readManifest?.();
+    console.info('[zcast] manifest shape:',
+      Array.isArray(json) ? `array(len=${json.length})` : typeof json,
+      json && typeof json === 'object' && 'media' in json ? '(flat item)' : ''
+    );
     await applySchedule(json);
 
     // Push updates when the file changes

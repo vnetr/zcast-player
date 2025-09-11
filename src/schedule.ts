@@ -37,6 +37,17 @@ type ApiItem = {
   };
 };
 
+function normalizeToApiList(input: any): ApiItem[] | null {
+  if (looksLikeApiList(input)) return input;
+  if (looksLikeApiItem(input)) return [input];
+
+  if (looksLikeFlatList(input)) return (input as any[]).map(d => ({ data: d }));
+  if (looksLikeFlatItem(input)) return [{ data: input }];
+
+  return null; // not API-style; probably legacy manifest
+}
+
+
 function looksLikeApiItem(x: any): x is ApiItem {
   return x && typeof x === 'object' && x.data && typeof x.data === 'object' && 'media' in x.data;
 }
@@ -44,7 +55,13 @@ function looksLikeApiItem(x: any): x is ApiItem {
 function looksLikeApiList(x: any): x is ApiItem[] {
   return Array.isArray(x) && x.length > 0 && looksLikeApiItem(x[0]);
 }
-
+// NEW: flattened item guards  (fields directly on the object)
+function looksLikeFlatItem(x: any): x is Required<ApiItem>['data'] {
+  return x && typeof x === 'object' && 'media' in x && x.media && typeof x.media === 'object';
+}
+function looksLikeFlatList(x: any): x is Array<Required<ApiItem>['data']> {
+  return Array.isArray(x) && x.length > 0 && looksLikeFlatItem(x[0]);
+}
 function todaysWindow(now: DateTime, fromTime?: string, toTime?: string) {
   // If missing, treat as 00:00:00 -> 23:59:59.999
   const [fs='00',fm='00',fS='00', fms='000'] = (fromTime ?? '00:00:00.000').split(/[:.]/);
@@ -219,14 +236,7 @@ function pickFromLegacyManifest(scheduleDoc: any, nowJS: Date = new Date()): Act
 // Entry point that supports BOTH
 // ----------------------------
 export function pickActiveContent(input: any, nowJS: Date = new Date()): ActivePick {
-  // NEW formats
-  if (looksLikeApiList(input)) {
-    return pickFromApiList(input, nowJS);
-  }
-  if (looksLikeApiItem(input)) {
-    return pickFromApiList([input], nowJS); // single item support
-  }
-
-  // OLD manifest (recipe.events…)
+  const apiNorm = normalizeToApiList(input);
+  if (apiNorm) return pickFromApiList(apiNorm, nowJS);
   return pickFromLegacyManifest(input, nowJS);
 }
