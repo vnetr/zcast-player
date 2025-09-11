@@ -92,32 +92,38 @@ app.whenReady().then(() => {
   const distDir = distIndex ? path.dirname(distIndex) : '';
   const resFonts = path.join(process.resourcesPath, 'fonts');
 
+  // Remove any previous handlers you added; we only want ONE
   session.defaultSession.webRequest.onBeforeRequest(
-    { urls: ['*://*/*'] },                                // catch everything; we’ll filter inside
+    { urls: ['*://*/*'] },
     (details, callback) => {
       try {
         const u = new URL(details.url);
-        if (u.protocol !== 'file:') return callback({});  // only handle file://
+        if (u.protocol !== 'file:') return callback({});
 
-        const rawPath = u.pathname;                       // already decoded path
-        // 1) Fix ".../dist/index.html/fonts/<name>"  -> ".../dist/fonts/<name>"
-        const idxFrag = '/dist/index.html/fonts/';
-        const idxPos = rawPath.indexOf(idxFrag);
-        if (idxPos !== -1 && distDir) {
-          const fontRel = rawPath.slice(idxPos + idxFrag.length);  // "<name>"
+        // NOTE: u.pathname is already decoded on Linux (leading slash present)
+        let p = u.pathname;
+
+        // 1) Fix ".../dist/index.html/fonts/<name>"  ->  ".../dist/fonts/<name>"
+        if (p.includes('/dist/index.html/fonts/')) {
+          const fontRel = p.split('/dist/index.html/fonts/')[1];
           const target = path.join(distDir, 'fonts', fontRel);
           return callback({ redirectURL: toFileUrl(target) });
         }
 
-        // 2) Map root-absolute "/fonts/<name>" -> "<resources>/fonts/<name>"
-        //     (this covers code paths that emit absolute /fonts URLs)
-        if (rawPath.startsWith('/fonts/')) {
-          const fontRel = rawPath.slice('/fonts/'.length);
+        // 2) (extra) Fix ".../dist/assets/index-*.js/fonts/<name>" -> ".../dist/fonts/<name>"
+        if (p.includes('/dist/assets/') && p.includes('/fonts/')) {
+          const fontRel = p.split('/fonts/')[1];
+          const target = path.join(distDir, 'fonts', fontRel);
+          return callback({ redirectURL: toFileUrl(target) });
+        }
+
+        // 3) Map root-absolute "/fonts/<name>" -> packaged resources fonts (outside asar)
+        if (p.startsWith('/fonts/')) {
+          const fontRel = p.slice('/fonts/'.length);
           const target = path.join(resFonts, fontRel);
           return callback({ redirectURL: toFileUrl(target) });
         }
 
-        // else: no change
         return callback({});
       } catch {
         return callback({});
