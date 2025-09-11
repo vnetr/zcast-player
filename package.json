@@ -24,10 +24,8 @@
     ],
     "asar": true,
     "extraResources": [
-      {
-        "from": "src/mock",
-        "to": "mock"
-      }
+      { "from": "src/mock",     "to": "mock"  },
+      { "from": "public/fonts", "to": "fonts" }
     ],
     "directories": {
       "output": "release",

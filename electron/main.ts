@@ -1,7 +1,8 @@
 // src/electron/main.ts
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, session } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as url from 'url';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
 // ---- ESM friendly __dirname ----
@@ -85,7 +86,21 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  const resFontsDir = path.join(process.resourcesPath, 'fonts');
 
+  session.defaultSession.webRequest.onBeforeRequest(
+    { urls: ['file:///*'] },
+    (details, callback) => {
+      // Only rewrite root-absolute /fonts/… requests
+      const m = details.url.match(/^file:\/\/\/fonts\/(.+)$/);
+      if (!m) return callback({}); // no change
+
+      const requested = m[1]; // e.g. "Ballet72pt-Regular.woff2"
+      const target = path.join(resFontsDir, requested);
+      const redirectURL = url.pathToFileURL(target).href;
+      return callback({ redirectURL });
+    }
+  );
   const mf = manifestFilePath();
   if (!mf) {
     console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specified. Dev HMR only.');
