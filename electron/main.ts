@@ -9,6 +9,8 @@ import { createHash } from 'crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
+
+const toFileUrl = (p: string) => url.pathToFileURL(p).href;
 // ---- Force GPU / HW accel on Linux ----
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
@@ -86,21 +88,27 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  const resFontsDir = path.join(process.resourcesPath, 'fonts');
+  const distIndex = prodIndexHtml(); // you already have this function
+  const distDir = distIndex ? path.dirname(distIndex) : '';
 
-  session.defaultSession.webRequest.onBeforeRequest(
-    { urls: ['file:///*'] },
-    (details, callback) => {
-      // Only rewrite root-absolute /fonts/… requests
-      const m = details.url.match(/^file:\/\/\/fonts\/(.+)$/);
-      if (!m) return callback({}); // no change
+  session.defaultSession.webRequest.onBeforeRequest({ urls: ['file:///*'] }, (details, cb) => {
+    if (!distDir) return cb({});
+    const m = details.url.match(/^file:\/\/(.+\/dist\/)index\.html\/fonts\/(.+)$/);
+    if (!m) return cb({});
+    const [, distPrefix, fontRel] = m;
+    const target = path.join(distPrefix, 'fonts', fontRel);
+    return cb({ redirectURL: toFileUrl(target) });
+  });
 
-      const requested = m[1]; // e.g. "Ballet72pt-Regular.woff2"
-      const target = path.join(resFontsDir, requested);
-      const redirectURL = url.pathToFileURL(target).href;
-      return callback({ redirectURL });
-    }
-  );
+  // 2) map root-absolute /fonts/* → packaged resources fonts (outside asar)
+  session.defaultSession.webRequest.onBeforeRequest({ urls: ['file:///*'] }, (details, cb) => {
+    const m = details.url.match(/^file:\/\/\/fonts\/(.+)$/);
+    if (!m) return cb({});
+    const target = path.join(process.resourcesPath, 'fonts', m[1]);
+    return cb({ redirectURL: toFileUrl(target) });
+  });
+
+  
   const mf = manifestFilePath();
   if (!mf) {
     console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specified. Dev HMR only.');
