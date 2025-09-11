@@ -94,33 +94,40 @@ app.whenReady().then(() => {
 
   // Remove any previous handlers you added; we only want ONE
   session.defaultSession.webRequest.onBeforeRequest(
-    { urls: ['*://*/*'] },
+    { urls: ['file://*/*'] },
     (details, callback) => {
       try {
         const u = new URL(details.url);
         if (u.protocol !== 'file:') return callback({});
 
-        // NOTE: u.pathname is already decoded on Linux (leading slash present)
-        let p = u.pathname;
+        // already-decoded absolute path (starts with "/")
+        const p = u.pathname;
 
-        // 1) Fix ".../dist/index.html/fonts/<name>"  ->  ".../dist/fonts/<name>"
-        if (p.includes('/dist/index.html/fonts/')) {
-          const fontRel = p.split('/dist/index.html/fonts/')[1];
+        // DEBUG: uncomment temporarily if you want to see what we’re catching.
+        // console.log('[font hook] URL:', p);
+
+        // 1) ".../dist/index.html/fonts/<name>" -> ".../dist/fonts/<name>"
+        const bad1 = '/dist/index.html/fonts/';
+        if (p.includes(bad1) && distDir) {
+          const fontRel = p.slice(p.indexOf(bad1) + bad1.length);
           const target = path.join(distDir, 'fonts', fontRel);
+          // console.log('[font hook] redirect1 ->', target);
           return callback({ redirectURL: toFileUrl(target) });
         }
 
-        // 2) (extra) Fix ".../dist/assets/index-*.js/fonts/<name>" -> ".../dist/fonts/<name>"
+        // 2) ".../dist/assets/index-*.js/.../fonts/<name>" -> ".../dist/fonts/<name>"
         if (p.includes('/dist/assets/') && p.includes('/fonts/')) {
           const fontRel = p.split('/fonts/')[1];
           const target = path.join(distDir, 'fonts', fontRel);
+          // console.log('[font hook] redirect2 ->', target);
           return callback({ redirectURL: toFileUrl(target) });
         }
 
-        // 3) Map root-absolute "/fonts/<name>" -> packaged resources fonts (outside asar)
+        // 3) root-absolute "/fonts/<name>" -> "<resources>/fonts/<name>"
         if (p.startsWith('/fonts/')) {
           const fontRel = p.slice('/fonts/'.length);
           const target = path.join(resFonts, fontRel);
+          // console.log('[font hook] redirect3 ->', target);
           return callback({ redirectURL: toFileUrl(target) });
         }
 
