@@ -1,6 +1,36 @@
 // renderer/index.ts
-import '@zignage/layout-renderer';
+//import '@zignage/layout-renderer';
 import { pickActiveContent } from './schedule';
+
+async function loadRendererModule() {
+  if (import.meta.env.DEV) {
+    // Dev: normal node_modules import
+    await import('@zignage/layout-renderer');
+    return;
+  }
+
+  // Prod: read the vendor file text, neutralize TDZ patterns, import from a blob
+  const url = new URL('../vendor/layout-renderer.js', import.meta.url).href;
+
+  // 1) fetch the original source (from app.asar/dist/vendor/…)
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`failed to fetch renderer: ${resp.status}`);
+  const src = await resp.text();
+
+  // 2) patch: replace any decorator metadata like e("design:type", <ident>)
+  // with a harmless Object to avoid reading TDZ locals.
+  // (multiple hits can exist; do a global replace)
+  const patched = src.replace(/e\("design:type",\s*[A-Za-z_$][\w$]*\)/g, 'e("design:type", Object)');
+
+  // 3) import the patched code from a blob URL
+  const blob = new Blob([patched], { type: 'text/javascript' });
+  const blobUrl = URL.createObjectURL(blob);
+  try {
+    await import(/* @vite-ignore */ blobUrl);
+  } finally {
+    URL.revokeObjectURL(blobUrl);
+  }
+}
 
 type LayoutRendererEl = HTMLElement & {
   document: any;
@@ -27,8 +57,10 @@ let playerEl: LayoutRendererEl | null = null;
 let scheduleCache: any = null;
 let boundaryTimer: any = null;
 
-function ensureRenderer(): LayoutRendererEl {
+async function ensureRenderer(): Promise<LayoutRendererEl> {
   if (playerEl) return playerEl;
+  await loadRendererModule(); // <-- ensure the custom element is defined
+
   root.innerHTML = '';
   const el = document.createElement('layout-renderer') as LayoutRendererEl;
   el.editingMode = 'false';
@@ -49,7 +81,7 @@ async function applySchedule(doc: any) {
 
   const pick = pickActiveContent(doc, new Date());
   if (pick.kind === 'layout') {
-    const el = ensureRenderer();
+    const el = await ensureRenderer();
     el.document = pick.layout;
     try { await el.play(); } catch {}
     console.info('[zcast] Mounted layout from active event. Next check at', new Date(pick.nextCheck).toISOString());

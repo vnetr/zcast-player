@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig(({ command }) => ({
-  // Use relative paths for production so file:// loads work inside Electron
   base: command === 'serve' ? '/' : './',
   server: {
     watch: { usePolling: true, interval: 100 },
@@ -11,6 +10,10 @@ export default defineConfig(({ command }) => ({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: true
+    sourcemap: true,
+    // ⬇️ DO NOT bundle the renderer lib in prod (dev is unaffected)
+    rollupOptions: {
+      external: ['@zignage/layout-renderer']
+    }
   }
 }));

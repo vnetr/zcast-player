@@ -5,10 +5,11 @@
   "type": "module",
   "main": "build/electron/main.js",
   "scripts": {
-    "dev": "npm run build:electron && concurrently -k -n VITE,ELECTRON \"vite\" \"wait-on http://localhost:5173 && cross-env VITE_DEV=1 electron build/electron/main.js\"",
-    "build:app": "vite build",
+    "prebuild:vendor": "mkdir -p public/vendor && cp node_modules/@zignage/layout-renderer/index.js public/vendor/layout-renderer.js",
+    "build:app": "npm run prebuild:vendor && vite build",
     "build:electron": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json",
     "build": "rimraf build && npm run build:app && npm run build:electron",
+    "dev": "npm run build:electron && concurrently -k -n VITE,ELECTRON \"vite\" \"wait-on http://localhost:5173 && cross-env VITE_DEV=1 electron build/electron/main.js\"",
     "start": "electron build/electron/main.js",
     "dist": "npm run build && electron-builder --publish never"
   },
@@ -80,3 +81,4 @@
     "wait-on": "^8.0.4"
   }
 }
+
