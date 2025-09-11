@@ -22,20 +22,28 @@ function dayCodeFromLuxon(weekday: number): ByDayCode {
 // NEW FORMAT (API list) utils
 // ----------------------------
 type ApiItem = {
-  doc_uuid: string;
-  data: {
-    inceptAt?: string;  // ISO
-    expireAt?: string;  // ISO
-    fromTime?: string;  // "HH:mm:ss.SSS"
-    toTime?: string;    // "HH:mm:ss.SSS"
-    days?: Array<{ day: string; nthOfPeriod?: number }>;
+  doc_uuid?: string;
+  data?: {
+    inceptAt?: string;
+    expireAt?: string;
+    fromTime?: string;
+    toTime?: string;
+    days?: Array<{ day: unknown; nthOfPeriod?: number }>;
     workingDays?: boolean;
     weekend?: boolean;
     priority?: number;
-    media?: any;        // layout JSON
-    timeZone?: string;  // optional
+    media?: any;
+    timeZone?: string;
   };
 };
+
+function looksLikeApiItem(x: any): x is ApiItem {
+  return x && typeof x === 'object' && x.data && typeof x.data === 'object' && 'media' in x.data;
+}
+
+function looksLikeApiList(x: any): x is ApiItem[] {
+  return Array.isArray(x) && x.length > 0 && looksLikeApiItem(x[0]);
+}
 
 function todaysWindow(now: DateTime, fromTime?: string, toTime?: string) {
   // If missing, treat as 00:00:00 -> 23:59:59.999
@@ -48,7 +56,7 @@ function todaysWindow(now: DateTime, fromTime?: string, toTime?: string) {
 
 function allowedTodayByFlags(
   today: ByDayCode,
-  itemDays?: ApiItem['data']['days'],
+  itemDays?: Array<{ day: unknown; nthOfPeriod?: number }>,
   workingDays?: boolean,
   weekend?: boolean
 ): boolean {
@@ -211,10 +219,14 @@ function pickFromLegacyManifest(scheduleDoc: any, nowJS: Date = new Date()): Act
 // Entry point that supports BOTH
 // ----------------------------
 export function pickActiveContent(input: any, nowJS: Date = new Date()): ActivePick {
-  if (Array.isArray(input)) {
-    // New API list
-    return pickFromApiList(input as ApiItem[], nowJS);
+  // NEW formats
+  if (looksLikeApiList(input)) {
+    return pickFromApiList(input, nowJS);
   }
-  // Old manifest
+  if (looksLikeApiItem(input)) {
+    return pickFromApiList([input], nowJS); // single item support
+  }
+
+  // OLD manifest (recipe.events…)
   return pickFromLegacyManifest(input, nowJS);
 }
