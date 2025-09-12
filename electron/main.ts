@@ -8,11 +8,11 @@ import { createHash } from 'crypto';
 
 // ---- ESM friendly __dirname ----
 const __filename = fileURLToPath(import.meta.url);
-const __dirname  = path.dirname(__filename);
+const __dirname = path.dirname(__filename);
 
 // ---- helpers ----
 const toFileUrl = (p: string) => url.pathToFileURL(p).href;
-const sha256    = (s: string) => createHash('sha256').update(s).digest('hex');
+const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 // ---- Force GPU / HW accel on Linux ----
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
@@ -26,7 +26,7 @@ let win: BrowserWindow | null = null;
 
 function getArg(name: string): string | undefined {
   const prefix = `--${name}=`;
-  const hit = process.argv.find(a => a.startsWith(prefix));
+  const hit = process.argv.find((a) => a.startsWith(prefix));
   return hit ? hit.slice(prefix.length) : undefined;
 }
 
@@ -34,20 +34,13 @@ function packagedFallbackManifest(): string | '' {
   return app.isPackaged ? path.join(process.resourcesPath, 'mock', 'manifest.json') : '';
 }
 function manifestFilePath(): string {
-  return (
-    getArg('manifest-file') ||
-    process.env.ZCAST_MANIFEST_FILE ||
-    packagedFallbackManifest() ||
-    ''
-  );
+  return getArg('manifest-file') || process.env.ZCAST_MANIFEST_FILE || packagedFallbackManifest() || '';
 }
 function prodIndexHtml(): string | null {
   const distIndex = path.resolve(__dirname, '../../dist/index.html');
   if (fs.existsSync(distIndex)) return distIndex;
-
   const legacy = path.resolve(__dirname, '../renderer/index.html');
   if (fs.existsSync(legacy)) return legacy;
-
   return null;
 }
 
@@ -84,25 +77,26 @@ const mf = manifestFilePath();
 if (!mf) console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specified. Dev HMR only.');
 
 app.whenReady().then(() => {
-  const distIndex   = prodIndexHtml();                  // /opt/.../app.asar/dist/index.html
-  const distDir     = distIndex ? path.dirname(distIndex) : '';
-  const resFonts    = path.join(process.resourcesPath, 'fonts');
+  const distIndex = prodIndexHtml();
+  const distDir = distIndex ? path.dirname(distIndex) : '';
+  const resFonts = path.join(process.resourcesPath, 'fonts');
   const manifestDir = mf ? path.dirname(mf) : '';
 
   // ============================
-  // Hashed cache layout (as extracted by your script)
-  //   /media/assets/
-  //     assets/                 <-- subdir moved into place
-  //       assets-index.json
-  //       u/<urlSha>/<name>
-  //       h/<contentSha>/<name>
+  // Hashed cache layout
+  //   /media/assets/assets/
+  //     assets-index.json
+  //     u/<urlSha>/<name>
+  //     h/<contentSha>/<name>
   // ============================
-  const ASSETS_ROOT         = '/media/assets';           // cache root
-  const ASSETS_SUB          = path.join(ASSETS_ROOT, 'assets'); // where u/, h/, assets-index.json live
-  const INDEX_PATH          = path.join(ASSETS_SUB, 'assets-index.json');
-  const BUNDLE_MARKER_PATH  = path.join(ASSETS_ROOT, '.last_bundle_extracted');
+  const ASSETS_ROOT = '/media/assets';
+  const ASSETS_SUB = path.join(ASSETS_ROOT, 'assets');
+  const INDEX_PATH = path.join(ASSETS_SUB, 'assets-index.json');
+  const BUNDLE_MARKER_PATH = path.join(ASSETS_ROOT, '.last_bundle_extracted');
 
-  let assetIndex: { items?: Array<{ url:string; urlHash:string; contentHash?:string; name:string; size:number }> } | null = null;
+  let assetIndex: {
+    items?: Array<{ url: string; urlHash: string; contentHash?: string; name: string; size: number }>;
+  } | null = null;
 
   function loadAssetIndex() {
     try {
@@ -116,7 +110,6 @@ app.whenReady().then(() => {
   }
   loadAssetIndex();
 
-  // Reload index when extractor touches the marker
   try {
     fs.watch(ASSETS_ROOT, { persistent: false }, (_e, name) => {
       if (name === '.last_bundle_extracted') {
@@ -126,100 +119,99 @@ app.whenReady().then(() => {
   } catch {}
 
   // ============================
-  // file:// remaps (fonts + file-asset fallbacks)
+  // file:// remaps
   // ============================
-  const BARE_MEDIA_RE = /\.(png|jpe?g|webp|gif|svg|mp4|m4v|mov|webm|mp3|wav|ogg|ogv|aac|ttf|otf|woff2?)$/i;
+  const BARE_MEDIA_RE =
+    /\.(png|jpe?g|webp|gif|svg|mp4|m4v|mov|webm|mp3|wav|ogg|ogv|aac|ttf|otf|woff2?)$/i;
 
-  session.defaultSession.webRequest.onBeforeRequest(
-    { urls: ['file://*/*'] },
-    (details, callback) => {
-      try {
-        const u = new URL(details.url);
-        if (u.protocol !== 'file:') return callback({});
-        const p = u.pathname;
+  session.defaultSession.webRequest.onBeforeRequest({ urls: ['file://*/*'] }, (details, callback) => {
+    try {
+      const u = new URL(details.url);
+      if (u.protocol !== 'file:') return callback({});
+      const p = u.pathname;
 
-        // Fonts
-        const bad1 = '/dist/index.html/fonts/';
-        if (p.includes(bad1) && distDir) {
-          const fontRel = p.slice(p.indexOf(bad1) + bad1.length);
-          return callback({ redirectURL: toFileUrl(path.join(distDir, 'fonts', fontRel)) });
-        }
-        if (p.includes('/dist/assets/') && p.includes('/fonts/')) {
-          const fontRel = p.split('/fonts/')[1];
-          return callback({ redirectURL: toFileUrl(path.join(distDir, 'fonts', fontRel)) });
-        }
-        if (p.startsWith('/fonts/')) {
-          const fontRel = p.slice('/fonts/'.length);
-          return callback({ redirectURL: toFileUrl(path.join(resFonts, fontRel)) });
-        }
-
-        // Player-bundled assets (if doc refers to /assets/* or dist/assets/*)
-        if (manifestDir) {
-          if (p.includes('/dist/assets/')) {
-            const rel = p.split('/dist/assets/')[1];
-            const clean = rel.split(/[?#]/)[0];
-            const ext = (clean.split('.').pop() || '').toLowerCase();
-            const MEDIA = new Set(['png','jpg','jpeg','webp','gif','svg','mp4','m4v','mov','webm','mp3','wav','ogg','ogv','aac','ttf','otf','woff','woff2']);
-            if (MEDIA.has(ext)) {
-              return callback({ redirectURL: toFileUrl(path.join(manifestDir, 'assets', rel)) });
-            }
-          }
-          const badAssets = '/dist/index.html/assets/';
-          if (p.includes(badAssets)) {
-            const rel = p.slice(p.indexOf(badAssets) + badAssets.length);
-            return callback({ redirectURL: toFileUrl(path.join(manifestDir, 'assets', rel)) });
-          }
-          if (p.startsWith('/assets/')) {
-            const rel = p.slice('/assets/'.length);
-            return callback({ redirectURL: toFileUrl(path.join(manifestDir, 'assets', rel)) });
-          }
-        }
-
-        // Failsafe: any bare media under dist/* → manifestDir/assets/<file>
-        if (manifestDir && p.includes('/dist/') && BARE_MEDIA_RE.test(p)) {
-          const file = p.split('/').pop()!;
-          const target = path.join(manifestDir, 'assets', file);
-          return callback({ redirectURL: toFileUrl(target) });
-        }
-
-        return callback({});
-      } catch (e) {
-        console.warn('[assets file hook] error:', e);
-        return callback({});
+      // Fonts — catch FIRST
+      const bad1 = '/dist/index.html/fonts/';
+      if (p.includes(bad1) && distDir) {
+        const fontRel = p.slice(p.indexOf(bad1) + bad1.length);
+        return callback({ redirectURL: toFileUrl(path.join(distDir, 'fonts', fontRel)) });
       }
+      if (p.includes('/dist/assets/') && p.includes('/fonts/')) {
+        const fontRel = p.split('/fonts/')[1];
+        return callback({ redirectURL: toFileUrl(path.join(distDir, 'fonts', fontRel)) });
+      }
+      if (p.startsWith('/fonts/')) {
+        const fontRel = p.slice('/fonts/'.length);
+        return callback({ redirectURL: toFileUrl(path.join(resFonts, fontRel)) });
+      }
+
+      // Player-bundled assets
+      if (manifestDir) {
+        if (p.includes('/dist/assets/')) {
+          const rel = p.split('/dist/assets/')[1];
+          const clean = rel.split(/[?#]/)[0];
+          const ext = (clean.split('.').pop() || '').toLowerCase();
+          const MEDIA = new Set([
+            'png','jpg','jpeg','webp','gif','svg',
+            'mp4','m4v','mov','webm','mp3','wav','ogg','ogv','aac',
+            'ttf','otf','woff','woff2'
+          ]);
+          if (MEDIA.has(ext)) {
+            return callback({ redirectURL: toFileUrl(path.join(manifestDir, 'assets', rel)) });
+          }
+        }
+        const badAssets = '/dist/index.html/assets/';
+        if (p.includes(badAssets)) {
+          const rel = p.slice(p.indexOf(badAssets) + badAssets.length);
+          return callback({ redirectURL: toFileUrl(path.join(manifestDir, 'assets', rel)) });
+        }
+        if (p.startsWith('/assets/')) {
+          const rel = p.slice('/assets/'.length);
+          return callback({ redirectURL: toFileUrl(path.join(manifestDir, 'assets', rel)) });
+        }
+      }
+
+      // Fallback
+      if (manifestDir && p.includes('/dist/') && BARE_MEDIA_RE.test(p)) {
+        const file = p.split('/').pop()!;
+        const target = path.join(manifestDir, 'assets', file);
+        return callback({ redirectURL: toFileUrl(target) });
+      }
+
+      return callback({});
+    } catch (e) {
+      console.warn('[assets file hook] error:', e);
+      return callback({});
     }
-  );
+  });
 
   // ============================
-  // http(s) -> local hashed cache redirect (CRITICAL)
+  // http(s) -> hashed cache redirect
   // ============================
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['http://*/*', 'https://*/*'] },
     (details, callback) => {
       try {
         const remote = details.url;
-        const uhash  = sha256(remote);
-        const name   = decodeURIComponent(new URL(remote).pathname.split('/').pop() || 'asset');
+        const uhash = sha256(remote);
+        const name = decodeURIComponent(new URL(remote).pathname.split('/').pop() || 'asset');
 
-        // 1) Try URL-hash alias directly: assets/u/<urlHash>/<name>
         const aliasPath = path.join(ASSETS_SUB, 'u', uhash, name);
         if (fs.existsSync(aliasPath)) {
-          // console.log('[assets] url-hit', remote, '→', aliasPath);
+          console.log('[assets] url-hit', remote, '→', aliasPath);
           return callback({ redirectURL: toFileUrl(aliasPath) });
         }
 
-        // 2) If index is present, try content-hash bucket
         const items = assetIndex?.items || [];
-        const hit   = items.find((x) => x.urlHash === uhash);
+        const hit = items.find((x) => x.urlHash === uhash);
         if (hit?.contentHash) {
           const contentPath = path.join(ASSETS_SUB, 'h', hit.contentHash, hit.name);
           if (fs.existsSync(contentPath)) {
-            // console.log('[assets] content-hit', remote, '→', contentPath);
+            console.log('[assets] content-hit', remote, '→', contentPath);
             return callback({ redirectURL: toFileUrl(contentPath) });
           }
         }
 
-        // 3) Fall through to network (first run before extraction, etc.)
         return callback({});
       } catch (e) {
         console.warn('[assets http hook] error:', e);
@@ -229,7 +221,7 @@ app.whenReady().then(() => {
   );
 
   // ============================
-  // IPC: manifest read + file watcher
+  // IPC: manifest read + watch
   // ============================
   ipcMain.handle('zcast:read-manifest', async () => {
     const file = manifestFilePath();
@@ -255,7 +247,7 @@ app.whenReady().then(() => {
           const buf = await fs.promises.readFile(file);
           const json = JSON.parse(buf.toString('utf-8'));
           win.webContents.send('zcast:manifest-updated', json);
-        } catch { /* ignore transient write */ }
+        } catch {}
       }, 100);
     };
     try {
