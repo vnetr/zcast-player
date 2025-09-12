@@ -1,28 +1,26 @@
-// renderer/index.ts
-//import '@zignage/layout-renderer';
-import { pickActiveContent } from './schedule';
+// src/renderer/index.ts
+
+import { ScheduleEngine } from './schedule';
+
+// NOTE: Do NOT import '@zignage/layout-renderer' statically in prod —
+// we patch it at runtime to neutralize TDZ "design:type" metadata.
 
 async function loadRendererModule() {
   if (import.meta.env.DEV) {
-    // Dev: normal node_modules import
+    // Dev: straight from node_modules
     await import('@zignage/layout-renderer');
     return;
   }
 
-  // Prod: read the vendor file text, neutralize TDZ patterns, import from a blob
+  // Prod: read vendor file from the built app and patch TDZ metadata
   const url = new URL('../vendor/layout-renderer.js', import.meta.url).href;
-
-  // 1) fetch the original source (from app.asar/dist/vendor/…)
   const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`failed to fetch renderer: ${resp.status}`);
+  if (!resp.ok) throw new Error(`failed to fetch layout-renderer: ${resp.status}`);
   const src = await resp.text();
 
-  // 2) patch: replace any decorator metadata like e("design:type", <ident>)
-  // with a harmless Object to avoid reading TDZ locals.
-  // (multiple hits can exist; do a global replace)
+  // Replace decorator metadata like e("design:type", <Ident>) with Object
   const patched = src.replace(/e\("design:type",\s*[A-Za-z_$][\w$]*\)/g, 'e("design:type", Object)');
 
-  // 3) import the patched code from a blob URL
   const blob = new Blob([patched], { type: 'text/javascript' });
   const blobUrl = URL.createObjectURL(blob);
   try {
@@ -54,76 +52,111 @@ declare global {
 
 const root = document.getElementById('root')!;
 let playerEl: LayoutRendererEl | null = null;
-let scheduleCache: any = null;
-let boundaryTimer: any = null;
+let engine: ScheduleEngine | null = null;
+let loopTimer: any = null;
+
+function stopLoop() {
+  if (loopTimer) {
+    clearTimeout(loopTimer);
+    loopTimer = null;
+  }
+}
 
 async function ensureRenderer(): Promise<LayoutRendererEl> {
   if (playerEl) return playerEl;
-  await loadRendererModule(); // <-- ensure the custom element is defined
 
+  await loadRendererModule(); // ensure custom element is defined
   root.innerHTML = '';
+
   const el = document.createElement('layout-renderer') as LayoutRendererEl;
   el.editingMode = 'false';
   el.playbackMode = 'gpu';
   el.frameRate = 30;
   el.zoomFactor = 1;
+
   root.appendChild(el);
   playerEl = el;
   return el;
 }
 
-async function applySchedule(doc: any) {
-  scheduleCache = doc;
-  if (!doc) {
-    console.warn('[zcast] No schedule manifest loaded.');
-    return;
-  }
+async function renderLayout(layout: any) {
+  const el = await ensureRenderer();
 
-  const pick = pickActiveContent(doc, new Date());
-  if (pick.kind === 'layout') {
-    const el = await ensureRenderer();
-    el.document = pick.layout;
-    try { await el.play(); } catch { }
-    console.info('[zcast] Mounted layout from active event. Next check at', new Date(pick.nextCheck).toISOString());
-  } else {
-    console.info('[zcast] No active event right now. Next check at', new Date(pick.nextCheck).toISOString());
-    // Optional: show a black screen or maintenance splash
-    root.innerHTML = '<div style="width:100%;height:100%;background:#000"></div>';
-    playerEl = null;
-  }
+  // swap the document; layout-renderer re-initializes the scene
+  el.document = layout;
 
-  // Re-evaluate at the boundary without polling
-  if (boundaryTimer) clearTimeout(boundaryTimer);
-  const delay = Math.max(250, pick.nextCheck - Date.now());
-  boundaryTimer = setTimeout(() => {
-    if (scheduleCache) applySchedule(scheduleCache);
-  }, delay);
+  // try to run
+  try {
+    await el.play();
+  } catch (e) {
+    console.warn('[renderer] play() failed, retrying once after stop()', e);
+    try { await el.stop(); } catch {}
+    el.document = layout;
+    try { await el.play(); } catch (e2) { console.error('[renderer] play() failed again:', e2); }
+  }
+}
+
+function showBlack() {
+  root.innerHTML = '<div style="width:100%;height:100%;background:#000"></div>';
+  playerEl = null;
+}
+
+function startLoop() {
+  stopLoop();
+  const tick = async () => {
+    if (!engine) {
+      loopTimer = setTimeout(tick, 1000);
+      return;
+    }
+
+    // Ask the engine which item to play next and for how long
+    const { item, tickMs } = engine.next(new Date());
+
+    if (!item) {
+      console.info('[engine] idle — no active items; sleeping ms=', tickMs);
+      showBlack();
+      loopTimer = setTimeout(tick, Math.max(500, tickMs));
+      return;
+    }
+
+    await renderLayout(item.layout);
+    loopTimer = setTimeout(tick, Math.max(500, tickMs));
+  };
+
+  // Kick off the rotation loop
+  tick();
+}
+
+async function applyManifest(manifest: any) {
+  if (!engine) engine = new ScheduleEngine();
+  engine.updateManifest(manifest);
+  startLoop();
 }
 
 async function boot() {
   if (import.meta.hot) {
-    // Dev: load mock manifest via HMR
+    // Dev: load local mock and hot-reload it
     const { default: manifest } = await import('./mock/manifest.json');
-    await applySchedule(manifest);
+    console.info('[zcast] DEV manifest loaded (HMR):', Array.isArray(manifest) ? `array(len=${manifest.length})` : typeof manifest);
+    await applyManifest(manifest);
 
     import.meta.hot.accept('./mock/manifest.json', (mod) => {
       const next = mod?.default ?? manifest;
-      applySchedule(next);
-      console.info('[HMR] schedule manifest hot-updated');
+      console.info('[zcast] DEV manifest updated (HMR)');
+      applyManifest(next);
     });
   } else {
-    // Prod: read local file via preload
+    // Prod: read file via preload bridge
     const json = await window.zcast?.readManifest?.();
-    console.info('[zcast] manifest loaded type:',
-      Array.isArray(json) ? `array(len=${json.length})` : typeof json,
-      json && typeof json === 'object' && 'media' in json ? '(flat item)' : ''
+    console.info('[zcast] manifest loaded:',
+      Array.isArray(json) ? `array(len=${json.length})` : typeof json
     );
-    await applySchedule(json);
+    await applyManifest(json);
 
     // Push updates when the file changes
     window.zcast?.onManifestUpdate?.((next) => {
-      console.info('[zcast] Manifest file changed -> applying');
-      applySchedule(next);
+      console.info('[zcast] manifest file changed → applying');
+      applyManifest(next);
     });
   }
 }
