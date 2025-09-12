@@ -55,8 +55,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       webgl: true,
       backgroundThrottling: false,
-      webSecurity: false,
-      allowRunningInsecureContent: true,
+      webSecurity: false,               // allow scheme changes
+      allowRunningInsecureContent: true // http assets alongside file://
     },
   });
 
@@ -175,8 +175,107 @@ app.whenReady().then(() => {
     }
   );
 
-  // ====== (keep your existing IPC + watcher) ======
+  // ============================
+  // MEDIA: hashed cache (NO schedule assets)
+  //   /media/assets/assets/
+  //     u/<urlSha>/<filename>
+  //     h/<contentSha>/<filename>
+  //     assets-index.json  (optional)
+  // ============================
+  const ASSETS_ROOT = '/media/assets';
+  const ASSETS_SUB  = path.join(ASSETS_ROOT, 'assets');
+  const INDEX_PATH  = path.join(ASSETS_SUB, 'assets-index.json');
 
+  const MEDIA_EXTS = new Set([
+    'png','jpg','jpeg','webp','gif','svg',
+    'mp4','m4v','mov','webm','mp3','wav','ogg','ogv','aac'
+  ]);
+
+  let assetIndex:
+    | { items?: Array<{ url:string; urlHash:string; contentHash?:string; name:string }> }
+    | null = null;
+
+  function loadAssetIndex() {
+    try {
+      const txt = fs.readFileSync(INDEX_PATH, 'utf-8');
+      assetIndex = JSON.parse(txt);
+      if (DEBUG) console.log('[assets] index loaded:', assetIndex?.items?.length ?? 0, 'entries');
+    } catch {
+      assetIndex = null;
+      if (DEBUG) console.log('[assets] no readable assets-index.json (url-hash aliases only)');
+    }
+  }
+  loadAssetIndex();
+
+  try {
+    fs.watch(ASSETS_ROOT, { persistent: false }, (_e, name) => {
+      if (name === '.last_bundle_extracted') setTimeout(loadAssetIndex, 200);
+    });
+  } catch {}
+
+  function mapRemoteToLocal(remoteUrl: string): string | null {
+    try {
+      const u = new URL(remoteUrl);
+      const ext = (u.pathname.split('.').pop() || '').toLowerCase();
+      if (!MEDIA_EXTS.has(ext)) return null;
+
+      const uhash = sha256(remoteUrl);
+      const name  = decodeURIComponent(u.pathname.split('/').pop() || 'asset');
+
+      // 1) url-hash alias
+      const aliasPath = path.join(ASSETS_SUB, 'u', uhash, name);
+      if (fs.existsSync(aliasPath)) return aliasPath;
+
+      // 2) content-hash via index
+      const hit = assetIndex?.items?.find((x) => x.urlHash === uhash);
+      if (hit?.contentHash) {
+        const contentPath = path.join(ASSETS_SUB, 'h', hit.contentHash, hit.name);
+        if (fs.existsSync(contentPath)) return contentPath;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  // (A) http(s) → local hashed cache (preferred path)
+  session.defaultSession.webRequest.onBeforeRequest(
+    { urls: ['http://*/*', 'https://*/*'] },
+    (details, callback) => {
+      const local = mapRemoteToLocal(details.url);
+      if (local) {
+        if (DEBUG) console.log('[assets] http url-hit', details.url, '->', local);
+        return callback({ redirectURL: toFileUrl(local) });
+      }
+      return callback({}); // let network fetch if not cached
+    }
+  );
+
+  // (B) file://kraken... (renderer prefetch) → local hashed cache (or http as last resort)
+  session.defaultSession.webRequest.onBeforeRequest(
+    { urls: ['file://*/*'] },
+    (details, callback) => {
+      try {
+        const u = new URL(details.url);
+        if (u.protocol !== 'file:' || !u.hostname || u.hostname === 'localhost') {
+          return callback({});
+        }
+        // Convert file://<host>/<path> → http://<host>/<path> and map to cache
+        const httpGuess = `http://${u.hostname}${u.pathname}${u.search || ''}`;
+        const local     = mapRemoteToLocal(httpGuess);
+        if (local) {
+          if (DEBUG) console.log('[assets] salvage file://host -> local', details.url, '->', local);
+          return callback({ redirectURL: toFileUrl(local) });
+        }
+        if (DEBUG) console.log('[assets] salvage file://host -> http', details.url, '->', httpGuess);
+        return callback({ redirectURL: httpGuess }); // allowed by window flags
+      } catch {
+        return callback({});
+      }
+    }
+  );
+
+  // ====== (your IPC + watcher remain) ======
   ipcMain.handle('zcast:read-manifest', async () => {
     const file = manifestFilePath();
     if (!file) return null;
