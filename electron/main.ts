@@ -80,12 +80,12 @@ app.whenReady().then(() => {
   const distIndex = prodIndexHtml();                          // /opt/.../app.asar/dist/index.html
   const distDir   = distIndex ? path.dirname(distIndex) : ''; // /opt/.../app.asar/dist
   const resFonts  = path.join(process.resourcesPath, 'fonts'); // **REAL font location**
+  const resFontsSlash = resFonts.replace(/\\/g, '/');          // normalize for comparisons
 
   // ===== Fonts: build lookup maps =====
   const FALLBACK_BASE = 'Hack-Regular';
   const fontCaseMap: Record<string, string> = {};     // exact filename by lowercase
   const fontNormMap: Record<string, string> = {};     // normalized filename → real filename
-
   const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
   let resFontsExists = false;
@@ -96,7 +96,7 @@ app.whenReady().then(() => {
       fontNormMap[normalize(fn)] = fn;
     }
     resFontsExists = true;
-    if (DEBUG) console.log('[fonts] indexed', files.length, 'files in', resFonts);
+    if (DEBUG) console.log('[fonts] indexed', Object.keys(fontCaseMap).length, 'files in', resFonts);
   } catch (e) {
     console.warn('[fonts] cannot index resources/fonts:', e);
   }
@@ -104,7 +104,7 @@ app.whenReady().then(() => {
   function pickFallback(extWanted: string): string | null {
     if (!resFontsExists) return null;
     const candidates = [
-      `${FALLBACK_BASE}.${extWanted}`,              // exact extension
+      `${FALLBACK_BASE}.${extWanted}`,
       `${FALLBACK_BASE}.woff2`,
       `${FALLBACK_BASE}.ttf`,
       `${FALLBACK_BASE}.otf`,
@@ -119,36 +119,37 @@ app.whenReady().then(() => {
 
   function resolveFontPath(requestName: string): string | null {
     if (!resFontsExists) return null;
-    const base = path.basename(requestName);                 // "uni.next-pro-thin.ttf"
+    const base = path.basename(requestName);                 // e.g. "uni.next-pro-thin.ttf"
     const lc   = base.toLowerCase();
     const norm = normalize(base);
-    // 1) exact (case-insensitive)
+
+    // 1) resources/fonts (case-insensitive)
     let real = fontCaseMap[lc];
     if (real) {
       const p = path.join(resFonts, real);
       if (fs.existsSync(p)) return p;
     }
-    // 2) normalized (handles dots/underscores/dashes variations)
+    // 2) normalized
     real = fontNormMap[norm];
     if (real) {
       const p = path.join(resFonts, real);
       if (fs.existsSync(p)) return p;
     }
-    // 3) legacy dist/fonts lookup
+    // 3) legacy dist/fonts
     if (distDir) {
       const d1 = path.join(distDir, 'fonts', base);
       if (fs.existsSync(d1)) return d1;
-      // also try normalized search inside dist/fonts
       try {
-        for (const fn of fs.readdirSync(path.join(distDir, 'fonts'))) {
+        const distFontsDir = path.join(distDir, 'fonts');
+        for (const fn of fs.readdirSync(distFontsDir)) {
           if (normalize(fn) === norm) {
-            const p = path.join(distDir, 'fonts', fn);
+            const p = path.join(distFontsDir, fn);
             if (fs.existsSync(p)) return p;
           }
         }
       } catch {}
     }
-    // 4) fallback to Hack-Regular.* (match requested extension if possible)
+    // 4) fallback
     const ext = (base.split('.').pop() || '').toLowerCase();
     const fb  = pickFallback(ext);
     if (fb) {
@@ -159,44 +160,7 @@ app.whenReady().then(() => {
   }
 
   // ============================
-  // (1) file:// FONT hook — runs FIRST
-  // Catch *any* ".../fonts/<name>.(ttf|otf|woff|woff2)" including:
-  //   - /dist/index.html/fonts/<name>
-  //   - /dist/assets/**/fonts/<name>
-  //   - /fonts/<name>
-  // ============================
-  session.defaultSession.webRequest.onBeforeRequest(
-    { urls: ['file://*/*'] },
-    (details, callback) => {
-      try {
-        const u = new URL(details.url);
-        if (u.protocol !== 'file:') return callback({});
-
-        // decode path safely (handles %20 etc.)
-        const p = decodeURIComponent(u.pathname);
-
-        // quick path filter (avoid touching non-font file:// loads)
-        const isFont = p.includes('/fonts/') && /\.(ttf|otf|woff2?|TTF|OTF|WOFF2?)$/.test(p);
-        if (!isFont) return callback({});
-
-        const reqName = p.substring(p.lastIndexOf('/fonts/') + '/fonts/'.length); // "<name>.<ext>"
-        const target  = resolveFontPath(reqName);
-        if (target && fs.existsSync(target)) {
-          if (DEBUG) console.log('[font hook] redirect', p, '->', target);
-          return callback({ redirectURL: toFileUrl(target) });
-        }
-
-        // If we somehow fail resolution, let it fall through (will 404), but we try hard above.
-        return callback({});
-      } catch (e) {
-        console.warn('[font hook] error:', e);
-        return callback({});
-      }
-    }
-  );
-
-  // ============================
-  // MEDIA hashed cache (unchanged from your working version)
+  // MEDIA hashed cache (unchanged)
   // ============================
   const ASSETS_ROOT = '/media/assets';
   const ASSETS_SUB  = path.join(ASSETS_ROOT, 'assets');
@@ -254,38 +218,68 @@ app.whenReady().then(() => {
     }
   }
 
-  // (2) http(s) → local hashed cache
+  // ============================
+  // (A) http(s) → local hashed cache (unchanged)
+  // ============================
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['http://*/*', 'https://*/*'] },
     (details, callback) => {
       const local = mapRemoteToLocal(details.url);
-      if (local) {
-        if (DEBUG) console.log('[assets] http url-hit', details.url, '->', local);
-        return callback({ redirectURL: toFileUrl(local) });
-      }
-      return callback({}); // allow network fetch
+      if (local) return callback({ redirectURL: toFileUrl(local) });
+      return callback({});
     }
   );
 
-  // (3) file://host/... (renderer prefetch) → local hashed cache or http
+  // ============================
+  // (B) SINGLE file:// hook (fonts FIRST, then salvage) ← key fix
+  // ============================
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['file://*/*'] },
     (details, callback) => {
       try {
         const u = new URL(details.url);
-        // Only handle "file://<hostname>/..." shapes; normal file:/// paths have no hostname.
-        if (u.protocol !== 'file:' || !u.hostname || u.hostname === 'localhost') {
+        if (u.protocol !== 'file:') return callback({});
+
+        // decoded absolute path (posix-like)
+        const p = decodeURIComponent(u.pathname);
+        const pSlash = p.replace(/\\/g, '/');
+
+        // --- Loop guard: if we're already pointing into resources/fonts, pass through
+        if (pSlash.startsWith(resFontsSlash.replace(/\\/g,'/'))) {
           return callback({});
         }
-        const httpGuess = `http://${u.hostname}${decodeURIComponent(u.pathname)}${u.search || ''}`;
-        const local     = mapRemoteToLocal(httpGuess);
-        if (local) {
-          if (DEBUG) console.log('[assets] salvage file://host -> local', details.url, '->', local);
-          return callback({ redirectURL: toFileUrl(local) });
+
+        // --- 1) FONTS: catch any ".../fonts/<name>.(ttf|otf|woff|woff2)"
+        const isFont = pSlash.includes('/fonts/') && /\.(ttf|otf|woff2?|TTF|OTF|WOFF2?)$/.test(pSlash);
+        if (isFont) {
+          const reqName = pSlash.substring(pSlash.lastIndexOf('/fonts/') + '/fonts/'.length);
+          const target  = resolveFontPath(reqName);
+          if (target && fs.existsSync(target)) {
+            const redirectURL = toFileUrl(target);
+            if (DEBUG) console.log('[font hook] redirect', pSlash, '->', redirectURL);
+            return callback({ redirectURL });
+          }
+          // no match → fall through (may 404, but we do our best above)
+          return callback({});
         }
-        if (DEBUG) console.log('[assets] salvage file://host -> http', details.url, '->', httpGuess);
-        return callback({ redirectURL: httpGuess });
-      } catch {
+
+        // --- 2) SALVAGE: file://<host>/... → try local cache or http
+        // Only for "file://<hostname>/..." shapes; normal "file:///..." has no hostname
+        if (u.hostname && u.hostname !== 'localhost') {
+          const httpGuess = `http://${u.hostname}${decodeURIComponent(u.pathname)}${u.search || ''}`;
+          const local     = mapRemoteToLocal(httpGuess);
+          if (local) {
+            if (DEBUG) console.log('[assets] salvage file://host -> local', details.url, '->', local);
+            return callback({ redirectURL: toFileUrl(local) });
+          }
+          if (DEBUG) console.log('[assets] salvage file://host -> http', details.url, '->', httpGuess);
+          return callback({ redirectURL: httpGuess });
+        }
+
+        // anything else: pass through
+        return callback({});
+      } catch (e) {
+        console.warn('[file hook] error:', e);
         return callback({});
       }
     }
