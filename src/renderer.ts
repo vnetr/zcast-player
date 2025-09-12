@@ -25,7 +25,6 @@ type LayoutRendererEl = HTMLElement & {
   play: () => Promise<void>;
   pause: () => Promise<void>;
   stop: () => Promise<void>;
-  // some builds dispatch 'ready' when scene is playable; if not, we fall back to heuristics
 };
 
 declare global {
@@ -80,7 +79,6 @@ async function ensureStages() {
     el.playbackMode = 'gpu';
     el.frameRate = 30;
     el.zoomFactor = 1;
-    // Ensure they fill the layer
     (el.style as any).position = 'absolute';
     (el.style as any).inset = '0';
   }
@@ -92,47 +90,45 @@ async function ensureStages() {
   activePlayer = playerA; backPlayer = playerB;
 }
 
-// ---------- ready wait (robust, event or heuristic) ----------
-async function waitReady(el: LayoutRendererEl, timeoutMs = 6000) {
-  // If your layout-renderer dispatches a 'ready' event, prefer that:
-  const hasReadyListener = new Promise<void>((resolve) => {
-    const onReady = () => { el.removeEventListener('ready', onReady as any); resolve(); };
-    el.addEventListener('ready', onReady as any, { once: true });
-    // If no event fires quickly, we’ll resolve on play() completion below.
-    setTimeout(() => { el.removeEventListener('ready', onReady as any); resolve(); }, 150); // small grace
+// ---------- helpers: real event + heuristic readiness ----------
+function waitLayoutLoaded(el: HTMLElement, timeoutMs = 6000): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let done = false;
+    const onLoaded = () => { if (!done) { done = true; cleanup(); resolve(); } };
+    const t = setTimeout(() => { if (!done) { done = true; cleanup(); reject(new Error('layoutLoaded timeout')); } }, timeoutMs);
+    const cleanup = () => { clearTimeout(t); el.removeEventListener('layoutLoaded', onLoaded as any); };
+    el.addEventListener('layoutLoaded', onLoaded as any, { once: true });
   });
+}
 
-  // Try a quick play() to initialize scene graph; ignore errors (we retry)
+async function waitReady(el: LayoutRendererEl, timeoutMs = 6000) {
+  // Try a quick play to initialize scene; ignore failures here.
   try { await el.play(); } catch {}
 
-  // Fallback: small raf sequence (scene stabilized)
   const rafSettled = new Promise<void>((resolve) => {
-    let ticks = 0;
-    const step = () => {
-      if (++ticks >= 3) return resolve(); // ~2-3 frames
-      requestAnimationFrame(step);
-    };
+    let ticks = 0; const step = () => { if (++ticks >= 3) resolve(); else requestAnimationFrame(step); };
     requestAnimationFrame(step);
   });
 
   await Promise.race([
-    (async () => { await hasReadyListener; await rafSettled; })(),
+    rafSettled,
     new Promise<void>((_, rej) => setTimeout(() => rej(new Error('ready-timeout')), timeoutMs)),
   ]);
 }
 
 // ---------- layout render off-screen ----------
 async function prepareOffscreen(layout: any) {
-  // reset back player cleanly to avoid carry-over
   try { await backPlayer.stop(); } catch {}
   backPlayer.document = layout;
 
-  // wait until it’s safe to show
-  await waitReady(backPlayer);
+  // Prefer the component’s own load signal, then ask it to play, then heuristic settle.
+  await waitLayoutLoaded(backPlayer).catch(() => {}); // don’t hard-fail if event not emitted
+  try { await backPlayer.play(); } catch {}
+  await waitReady(backPlayer).catch(() => {});
 }
 
 // ---------- atomic swap ----------
-function swapLayers() {
+async function swapLayers() {
   activeStage.classList.remove('visible'); activeStage.classList.add('hidden');
   backStage.classList.remove('hidden');    backStage.classList.add('visible');
 
@@ -140,8 +136,12 @@ function swapLayers() {
   [activeStage, backStage] = [backStage, activeStage];
   [activePlayer, backPlayer] = [backPlayer, activePlayer];
 
-  // optional: free the now-hidden player’s scene to reduce VRAM
-  // but keep the element so future prepareOffscreen has a target
+  // ensure the now-visible player is actually playing
+  try { await activePlayer.play(); } catch {}
+  // one more nudge on next frame (helps hidden→visible autoplay edge cases)
+  requestAnimationFrame(async () => { try { await activePlayer.play(); } catch {} });
+
+  // optional: quiet the back player to save resources
   try { backPlayer.pause(); } catch {}
 }
 
@@ -159,12 +159,10 @@ async function tick(versionAtStart: number) {
   if (!engine) { scheduleNext(500); return; }
 
   const { item, tickMs } = engine.next(new Date());
-
-  // If manifest changed mid-tick, abandon this tick
   if (versionAtStart !== manifestVersion) return;
 
   if (!item) {
-    // Keep last good on screen; retry fast—do NOT blank
+    // Keep last good on screen; retry soon — never blank
     scheduleNext(Math.min(1000, Math.max(250, tickMs)));
     return;
   }
@@ -173,7 +171,8 @@ async function tick(versionAtStart: number) {
   const same =
     lastGoodLayout &&
     nextLayout &&
-    ((lastGoodLayout === nextLayout) || (lastGoodLayout.id && nextLayout.id && lastGoodLayout.id === nextLayout.id));
+    ((lastGoodLayout === nextLayout) ||
+     (lastGoodLayout.id && nextLayout.id && lastGoodLayout.id === nextLayout.id));
 
   if (same) {
     scheduleNext(Math.max(500, tickMs));
@@ -182,8 +181,8 @@ async function tick(versionAtStart: number) {
 
   try {
     await prepareOffscreen(nextLayout);
-    if (versionAtStart !== manifestVersion) return; // manifest changed while preparing
-    swapLayers();
+    if (versionAtStart !== manifestVersion) return;
+    await swapLayers();
     lastGoodLayout = nextLayout;
   } catch (e) {
     console.error('[renderer] prepare/swap failed; keep current', e);

@@ -19,6 +19,7 @@ app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,CanvasOopRasterization');
 app.commandLine.appendSwitch('use-angle', 'gl-egl');
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 let win: BrowserWindow | null = null;
 
