@@ -114,7 +114,7 @@ async function boot() {
   } else {
     // Prod: read local file via preload
     const json = await window.zcast?.readManifest?.();
-    console.info('[zcast] manifest shape:',
+    console.info('[zcast] manifest loaded type:',
       Array.isArray(json) ? `array(len=${json.length})` : typeof json,
       json && typeof json === 'object' && 'media' in json ? '(flat item)' : ''
     );

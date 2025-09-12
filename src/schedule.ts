@@ -1,8 +1,12 @@
-// renderer/schedule.ts
+// src/schedule.ts
 import { DateTime } from 'luxon';
 
+// ---------- CONFIG ----------
+const DEFAULT_TZ = 'America/New_York';
+// ----------------------------
+
 const ALL_DAYS = ['mo','tu','we','th','fr','sa','su'] as const;
-export type ByDayCode = typeof ALL_DAYS[number];
+type ByDayCode = typeof ALL_DAYS[number];
 
 function isByDayCode(x: string): x is ByDayCode {
   return (ALL_DAYS as readonly string[]).includes(x);
@@ -14,64 +18,74 @@ function toByDayCode(x: unknown): ByDayCode | null {
 function dayCodeFromLuxon(weekday: number): ByDayCode {
   // Luxon: 1=Mon..7=Sun
   const map: Record<number, ByDayCode> =
-    {1:'mo',2:'tu',3:'we',4:'th',5:'fr',6:'sa',7:'su'};
+    {1:'mo',2:'tu','3':'we' as any,'4':'th' as any,'5':'fr' as any,'6':'sa' as any,'7':'su' as any};
   return map[weekday];
 }
 
-type NewItemData = {
-  inceptAt?: string;         // ISO
-  expireAt?: string;         // ISO
-  fromTime?: string;         // "HH:mm:ss.SSS"
-  toTime?: string;           // "HH:mm:ss.SSS"
+// Shape of the **new** schedule item we evaluate internally
+type NewItem = {
+  inceptAt?: string;
+  expireAt?: string;
+  fromTime?: string;             // "HH:mm:ss.SSS"
+  toTime?: string;               // "HH:mm:ss.SSS"
   days?: Array<{ day?: unknown; nthOfPeriod?: number }>;
   workingDays?: boolean;
   weekend?: boolean;
   priority?: number;
-  media?: any;               // layout JSON
-  timeZone?: string;         // optional timezone per item
+  media?: any;                   // layout JSON (must have type === 'layout')
+  timeZone?: string;             // optional per-item TZ
   // other fields ignored
 };
 
-// ------------ normalizers (turn any new-API shape into NewItemData[]) ------------
-function looksLikeLegacy(x: any): boolean {
-  return x && typeof x === 'object' && x.recipe && Array.isArray(x.recipe.events);
-}
-function looksLikeNestedItem(x: any): x is { data: NewItemData } {
-  return x && typeof x === 'object' && x.data && typeof x.data === 'object' && 'media' in x.data;
-}
-function looksLikeNestedList(x: any): x is Array<{ data: NewItemData }> {
-  return Array.isArray(x) && x.length > 0 && looksLikeNestedItem(x[0]);
-}
-function looksLikeFlatItem(x: any): x is NewItemData {
+// ---------- Normalization: accept array/single, flat/nested ----------
+function looksFlat(x: any): x is NewItem {
   return x && typeof x === 'object' && 'media' in x && x.media && typeof x.media === 'object';
 }
-function looksLikeFlatList(x: any): x is NewItemData[] {
-  return Array.isArray(x) && x.length > 0 && looksLikeFlatItem(x[0]);
+function looksNested(x: any): x is { data: NewItem } {
+  return x && typeof x === 'object' && x.data && typeof x.data === 'object' && 'media' in x.data;
 }
 
-function unwrapCommonWrappers(x: any): any {
-  // Some APIs wrap lists under {results: [...]}, {data: [...]}, {items: [...]}
+// Some APIs wrap arrays as {results:[…]} or {data:[…]}
+function unwrapListWrappers(x: any): any {
   if (x && typeof x === 'object') {
-    if (Array.isArray((x as any).results)) return (x as any).results;
-    if (Array.isArray((x as any).data))    return (x as any).data;
-    if (Array.isArray((x as any).items))   return (x as any).items;
+    if (Array.isArray(x.results)) return x.results;
+    if (Array.isArray(x.data))    return x.data;
+    if (Array.isArray(x.items))   return x.items;
   }
   return x;
 }
 
-function normalizeToNewDataList(input: any): NewItemData[] | null {
-  const x = unwrapCommonWrappers(input);
+function normalize(manifest: any): NewItem[] {
+  const raw = unwrapListWrappers(manifest);
+  let out: NewItem[] = [];
 
-  if (looksLikeNestedList(x)) return (x as Array<{data: NewItemData}>).map(r => r.data);
-  if (looksLikeNestedItem(x)) return [(x as {data: NewItemData}).data];
+  if (Array.isArray(raw)) {
+    for (const it of raw) {
+      if (looksFlat(it)) out.push(it);
+      else if (looksNested(it)) out.push(it.data);
+    }
+  } else if (raw && typeof raw === 'object') {
+    if (looksFlat(raw)) out.push(raw);
+    else if (looksNested(raw)) out.push(raw.data);
+  }
 
-  if (looksLikeFlatList(x))   return x as NewItemData[];
-  if (looksLikeFlatItem(x))   return [x as NewItemData];
+  // Logs so you always know what we saw
+  console.groupCollapsed('[schedule] normalize');
+  console.info('input type:', Array.isArray(manifest) ? `array(len=${manifest.length})` : typeof manifest);
+  console.info('normalized items:', out.length);
+  if (out.length > 0) {
+    console.debug('first normalized item sample:', safePreview(out[0]));
+  }
+  console.groupEnd();
 
-  return null; // not new-API
+  return out;
 }
 
-// -------------------------- helpers used by evaluator --------------------------
+function safePreview(x: unknown) {
+  try { return JSON.parse(JSON.stringify(x)); } catch { return x; }
+}
+
+// ---------- Helpers for today window & day filters ----------
 function todaysWindow(now: DateTime, fromTime?: string, toTime?: string) {
   // Default to full day
   const [fs='00',fm='00',fS='00', fms='000'] = (fromTime ?? '00:00:00.000').split(/[:.]/);
@@ -81,7 +95,7 @@ function todaysWindow(now: DateTime, fromTime?: string, toTime?: string) {
   return { start, end };
 }
 
-function allowedTodayByFlags(
+function allowedToday(
   today: ByDayCode,
   itemDays?: Array<{ day?: unknown; nthOfPeriod?: number }>,
   workingDays?: boolean,
@@ -95,27 +109,33 @@ function allowedTodayByFlags(
     );
     return set.has(today);
   }
-  if (workingDays && weekend) return true;                     // both → all days
+  if (workingDays && weekend) return true;                     // both => all 7 days
   if (workingDays) return ['mo','tu','we','th','fr'].includes(today);
   if (weekend)     return ['sa','su'].includes(today);
-  return true;                                                 // no constraints
+  return true;                                                 // no constraint
 }
 
-// -------------------------- NEW format evaluator --------------------------
-function pickFromNewDataList(list: NewItemData[], nowJS: Date = new Date()): ActivePick {
-  if (!Array.isArray(list) || list.length === 0) {
+// ---------- Public types ----------
+export type ActivePick =
+  | { kind: 'none';   nextCheck: number }
+  | { kind: 'layout'; layout: any; nextCheck: number; reason: string };
+
+// ---------- Evaluator for new items only (forced EST by default) ----------
+export function pickActiveContent(manifest: any, nowJS: Date = new Date()): ActivePick {
+  const items = normalize(manifest);
+
+  // If nothing recognizable → re-check a bit later (and log)
+  if (items.length === 0) {
+    console.warn('[schedule] manifest not recognized as new-format (no items with .media).');
     return { kind: 'none', nextCheck: Date.now() + 60_000 };
   }
 
-  const tzDefault = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-
-  const candidates = list.map((d, idx) => {
-    const tz = d.timeZone || tzDefault;
+  const candidates = items.map((d, idx) => {
+    const tz = d.timeZone || DEFAULT_TZ;
     const now = DateTime.fromJSDate(nowJS).setZone(tz);
 
     const incept = d.inceptAt ? DateTime.fromISO(d.inceptAt, { zone: tz }) : null;
     const expire = d.expireAt ? DateTime.fromISO(d.expireAt, { zone: tz }) : null;
-
     const { start: dayStart, end: dayEnd } = todaysWindow(now, d.fromTime, d.toTime);
 
     const withinDates =
@@ -123,23 +143,34 @@ function pickFromNewDataList(list: NewItemData[], nowJS: Date = new Date()): Act
       (!expire || (expire.isValid && now <= expire));
 
     const todayCode = dayCodeFromLuxon(now.weekday);
-    const allowedDay = allowedTodayByFlags(todayCode, d.days, d.workingDays, d.weekend);
+    const allowedDay = allowedToday(todayCode, d.days, d.workingDays, d.weekend);
 
     const withinDayWindow = now >= dayStart && now <= dayEnd;
 
     const active = withinDates && allowedDay && withinDayWindow;
 
-    // Next boundary to re-check
+    // Next moment to re-evaluate
     let nextCheck: DateTime | null = null;
     if (incept && incept.isValid && now < incept)             nextCheck = incept;
     else if (now < dayStart)                                  nextCheck = dayStart;
     else if (active)                                          nextCheck = dayEnd.plus({ millisecond: 1 });
-    else { // tomorrow start (best-effort)
+    else { // tomorrow start
       const tomorrow = now.plus({ days: 1 });
       const { start: tomorrowStart } = todaysWindow(tomorrow, d.fromTime, d.toTime);
       nextCheck = tomorrowStart;
     }
     if (expire && expire.isValid && nextCheck > expire)       nextCheck = expire.plus({ millisecond: 1 });
+
+    // DEBUG per-candidate
+    console.groupCollapsed(`[schedule] item #${idx} (priority=${Number(d.priority ?? 0)})`);
+    console.info('tz:', tz, '| now:', now.toISO());
+    console.info('inceptAt:', incept?.toISO() ?? '(none)', '| expireAt:', expire?.toISO() ?? '(none)');
+    console.info('fromTime:', d.fromTime ?? '(00:00:00.000)', '| toTime:', d.toTime ?? '(23:59:59.999)');
+    console.info('today:', todayCode, '| days[] present:', Array.isArray(d.days) ? d.days.length : 0,
+                 '| workingDays:', !!d.workingDays, '| weekend:', !!d.weekend);
+    console.info('withinDates:', withinDates, '| allowedDay:', allowedDay, '| withinDayWindow:', withinDayWindow);
+    console.info('active:', active, '| nextCheck:', nextCheck?.toISO());
+    console.groupEnd();
 
     return {
       idx,
@@ -147,101 +178,28 @@ function pickFromNewDataList(list: NewItemData[], nowJS: Date = new Date()): Act
       layout: d.media,
       priority: Number(d.priority ?? 0),
       nextCheckMs: nextCheck?.toMillis() ?? (Date.now() + 60_000),
-      // diagnostics (useful during bring-up)
-      __why: { withinDates, allowedDay, withinDayWindow, tz, incept: incept?.toISO(), expire: expire?.toISO(),
-               fromTime: d.fromTime, toTime: d.toTime, today: todayCode }
     };
   });
 
+  // When to wake up next time
   const nextCheck = Math.min(...candidates.map(c => c.nextCheckMs));
-  const actives = candidates.filter(c => c.active && c.layout && c.layout.type === 'layout');
 
+  // Pick active with highest priority; tie → last wins
+  const actives = candidates.filter(c => c.active && c.layout && c.layout.type === 'layout');
   if (actives.length === 0) {
-    // Optional: uncomment for one-line diagnostics on the highest-priority item
-    // const top = candidates.sort((a,b) => (b.priority - a.priority) || (b.idx - a.idx))[0];
-    // console.info('[schedule:new] not active —', top?.__why);
+    const top = [...candidates].sort((a,b) => (b.priority - a.priority) || (b.idx - a.idx))[0];
+    if (top) {
+      console.warn('[schedule] no active item; highest-priority candidate snapshot:', {
+        priority: top.priority, nextCheckISO: new Date(top.nextCheckMs).toISOString()
+      });
+    }
     return { kind: 'none', nextCheck };
   }
 
-  // Highest priority wins; tie-break: last defined wins
   actives.sort((a, b) => (b.priority - a.priority) || (b.idx - a.idx));
   const chosen = actives[0];
 
-  return { kind: 'layout', layout: chosen.layout, nextCheck, reason: 'api-list+priority' };
-}
+  console.info('[schedule] chosen item:', { idx: chosen.idx, priority: chosen.priority, nextCheckISO: new Date(nextCheck).toISOString() });
 
-// -------------------------- legacy evaluator (unchanged) --------------------------
-function parseUntil(rule: any, tz: string): DateTime | null {
-  const u = rule?.until;
-  if (!u) return null;
-  try { return DateTime.fromISO(u, { zone: tz }); } catch { return null; }
-}
-function allowedToday(rule: any, tzNow: DateTime): boolean {
-  const by = rule?.byDay;
-  if (!Array.isArray(by) || by.length === 0) return true;
-  const codes = new Set<ByDayCode>(
-    by.map((d: any) => toByDayCode(d?.day)).filter((v): v is ByDayCode => v !== null)
-  );
-  return codes.has(dayCodeFromLuxon(tzNow.weekday));
-}
-
-export type ActivePick =
-  | { kind: 'none'; nextCheck: number }
-  | { kind: 'layout'; layout: any; nextCheck: number; reason: string };
-
-function pickFromLegacyManifest(scheduleDoc: any, nowJS: Date = new Date()): ActivePick {
-  const events: any[] = scheduleDoc?.recipe?.events ?? [];
-  if (!Array.isArray(events) || events.length === 0) {
-    return { kind: 'none', nextCheck: Date.now() + 60_000 };
-  }
-
-  const candidates = events.map((ev: any, idx: number) => {
-    const tz = ev?.timeZone || 'UTC';
-    const now = DateTime.fromJSDate(nowJS).setZone(tz);
-    const start = DateTime.fromISO(ev?.start, { zone: tz });
-    const rule = Array.isArray(ev?.recurrenceRules) ? ev.recurrenceRules[0] : null;
-    const until = parseUntil(rule, tz);
-
-    const activeDay = allowedToday(rule, now);
-    const started = start.isValid ? now >= start : true;
-    const notEnded = until ? now <= until : true;
-    const active = activeDay && started && notEnded;
-
-    let nextCheck: DateTime | null = null;
-    if (!started && start.isValid) nextCheck = start;
-    else if (until) nextCheck = until.plus({ milliseconds: 1 });
-    else nextCheck = now.plus({ hours: 1 });
-
-    return {
-      idx, ev, active,
-      priority: Number(ev?.priority ?? 0),
-      nextCheckMs: nextCheck?.toMillis() ?? (Date.now() + 60_000),
-    };
-  });
-
-  const nextCheck = Math.min(...candidates.map(c => c.nextCheckMs));
-  const actives = candidates.filter(c => c.active);
-  if (actives.length === 0) return { kind: 'none', nextCheck };
-
-  actives.sort((a, b) => (b.priority - a.priority) || (b.idx - a.idx));
-  const chosen = actives[0].ev;
-
-  const mt = chosen?.playlist?.media_templates;
-  if (!Array.isArray(mt) || mt.length === 0) return { kind: 'none', nextCheck };
-
-  const first = mt[0];
-  const params = first?.params;
-  if (!params || params.type !== 'layout') return { kind: 'none', nextCheck };
-
-  const layoutDoc = params;
-  return { kind: 'layout', layout: layoutDoc, nextCheck, reason: 'event+priority' };
-}
-
-// -------------------------- entry point (supports ALL shapes) --------------------------
-export function pickActiveContent(input: any, nowJS: Date = new Date()): ActivePick {
-  const newList = normalizeToNewDataList(input);
-  if (newList) return pickFromNewDataList(newList, nowJS);
-  if (looksLikeLegacy(input)) return pickFromLegacyManifest(input, nowJS);
-  // Unknown or empty → re-check in ~1min
-  return { kind: 'none', nextCheck: Date.now() + 60_000 };
+  return { kind: 'layout', layout: chosen.layout, nextCheck, reason: 'new-format+priority' };
 }
