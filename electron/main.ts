@@ -85,15 +85,13 @@ app.whenReady().then(() => {
   // Build a lowercase index of shipped fonts for case-insensitive lookup
   const fontCaseMap: Record<string, string> = {};
   try {
-    for (const fn of fs.readdirSync(resFonts)) {
-      fontCaseMap[fn.toLowerCase()] = fn;
-    }
+    for (const fn of fs.readdirSync(resFonts)) fontCaseMap[fn.toLowerCase()] = fn;
     if (DEBUG) console.log('[fonts] indexed', Object.keys(fontCaseMap).length, 'files');
   } catch (e) {
     console.warn('[fonts] cannot index resources/fonts:', e);
   }
 
-  const FONT_FALLBACK = 'Hack-Regular.ttf'; // you ship Hack-*.ttf — safe fallback
+  const FONT_FALLBACK = 'Hack-Regular.ttf'; // safe fallback you ship
 
   function resolveFontPath(fontRel: string): string | null {
     // Try resources/fonts exact
@@ -124,7 +122,7 @@ app.whenReady().then(() => {
   }
 
   // ============================
-  // file:// FONT hook (ONLY fonts here)
+  // 1) file:// FONT HOOK (first) — catch *all* fonts
   // IMPORTANT: filter must be file://*/* (not *://*/* or file:///*)
   // ============================
   session.defaultSession.webRequest.onBeforeRequest(
@@ -133,35 +131,15 @@ app.whenReady().then(() => {
       try {
         const u = new URL(details.url);
         if (u.protocol !== 'file:') return callback({});
-        const p = u.pathname; // already absolute
+        const p = decodeURIComponent(u.pathname);
 
-        // 1) ".../dist/index.html/fonts/<name>" -> resources/fonts/<name>"
-        const bad1 = '/dist/index.html/fonts/';
-        if (p.includes(bad1)) {
-          const fontRel = p.slice(p.indexOf(bad1) + bad1.length);
-          const target = resolveFontPath(fontRel);
-          if (target) {
-            if (DEBUG) console.log('[font hook] redirect1', p, '->', target);
-            return callback({ redirectURL: toFileUrl(target) });
-          }
-        }
-
-        // 2) ".../dist/assets/index-*.js/.../fonts/<name>" -> resources/fonts/<name>"
-        if (p.includes('/dist/assets/') && p.includes('/fonts/')) {
-          const fontRel = p.split('/fonts/')[1];
+        // Stronger match: any path containing /fonts/ and ending in a font extension
+        const isFont = p.includes('/fonts/') && /\.(ttf|otf|woff2?|TTF|OTF|WOFF2?)$/.test(p);
+        if (isFont) {
+          const fontRel = p.substring(p.lastIndexOf('/fonts/') + '/fonts/'.length);
           const target  = resolveFontPath(fontRel);
           if (target) {
-            if (DEBUG) console.log('[font hook] redirect2', p, '->', target);
-            return callback({ redirectURL: toFileUrl(target) });
-          }
-        }
-
-        // 3) root-absolute "/fonts/<name>" -> resources/fonts/<name>"
-        if (p.startsWith('/fonts/')) {
-          const fontRel = p.slice('/fonts/'.length);
-          const target  = resolveFontPath(fontRel);
-          if (target) {
-            if (DEBUG) console.log('[font hook] redirect3', p, '->', target);
+            if (DEBUG) console.log('[font hook] redirect', p, '->', target);
             return callback({ redirectURL: toFileUrl(target) });
           }
         }
@@ -176,7 +154,7 @@ app.whenReady().then(() => {
   );
 
   // ============================
-  // MEDIA: hashed cache (NO schedule assets)
+  // 2) MEDIA: hashed cache (NO schedule assets)
   //   /media/assets/assets/
   //     u/<urlSha>/<filename>
   //     h/<contentSha>/<filename>
@@ -261,7 +239,7 @@ app.whenReady().then(() => {
           return callback({});
         }
         // Convert file://<host>/<path> → http://<host>/<path> and map to cache
-        const httpGuess = `http://${u.hostname}${u.pathname}${u.search || ''}`;
+        const httpGuess = `http://${u.hostname}${decodeURIComponent(u.pathname)}${u.search || ''}`;
         const local     = mapRemoteToLocal(httpGuess);
         if (local) {
           if (DEBUG) console.log('[assets] salvage file://host -> local', details.url, '->', local);
