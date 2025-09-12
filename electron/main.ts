@@ -86,11 +86,16 @@ function createWindow() {
 
   win.on('closed', () => (win = null));
 }
-
+const mf = manifestFilePath();
+if (!mf) {
+  console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specified. Dev HMR only.');
+}
 app.whenReady().then(() => {
   const distIndex = prodIndexHtml();                      // e.g. /opt/.../app.asar/dist/index.html
   const distDir = distIndex ? path.dirname(distIndex) : '';
   const resFonts = path.join(process.resourcesPath, 'fonts');
+
+  const manifestDir = mf ? path.dirname(mf) : '';
 
   // Remove any previous handlers you added; we only want ONE
   session.defaultSession.webRequest.onBeforeRequest(
@@ -99,36 +104,36 @@ app.whenReady().then(() => {
       try {
         const u = new URL(details.url);
         if (u.protocol !== 'file:') return callback({});
-
-        // already-decoded absolute path (starts with "/")
         const p = u.pathname;
 
-        // DEBUG: uncomment temporarily if you want to see what we’re catching.
-        // console.log('[font hook] URL:', p);
-
-        // 1) ".../dist/index.html/fonts/<name>" -> ".../dist/fonts/<name>"
+        // ---- existing font fixes (keep yours here) ----
         const bad1 = '/dist/index.html/fonts/';
         if (p.includes(bad1) && distDir) {
           const fontRel = p.slice(p.indexOf(bad1) + bad1.length);
-          const target = path.join(distDir, 'fonts', fontRel);
-          // console.log('[font hook] redirect1 ->', target);
-          return callback({ redirectURL: toFileUrl(target) });
+          return callback({ redirectURL: toFileUrl(path.join(distDir, 'fonts', fontRel)) });
         }
-
-        // 2) ".../dist/assets/index-*.js/.../fonts/<name>" -> ".../dist/fonts/<name>"
         if (p.includes('/dist/assets/') && p.includes('/fonts/')) {
           const fontRel = p.split('/fonts/')[1];
-          const target = path.join(distDir, 'fonts', fontRel);
-          // console.log('[font hook] redirect2 ->', target);
-          return callback({ redirectURL: toFileUrl(target) });
+          return callback({ redirectURL: toFileUrl(path.join(distDir, 'fonts', fontRel)) });
         }
-
-        // 3) root-absolute "/fonts/<name>" -> "<resources>/fonts/<name>"
         if (p.startsWith('/fonts/')) {
           const fontRel = p.slice('/fonts/'.length);
-          const target = path.join(resFonts, fontRel);
-          // console.log('[font hook] redirect3 ->', target);
-          return callback({ redirectURL: toFileUrl(target) });
+          return callback({ redirectURL: toFileUrl(path.join(resFonts, fontRel)) });
+        }
+
+        // ---- NEW: map assets to extracted bundle near manifest ----
+        if (manifestDir) {
+          // 1) /dist/index.html/assets/<file>  ->  <manifestDir>/assets/<file>
+          const badAssets = '/dist/index.html/assets/';
+          if (p.includes(badAssets)) {
+            const rel = p.slice(p.indexOf(badAssets) + badAssets.length);
+            return callback({ redirectURL: toFileUrl(path.join(manifestDir, 'assets', rel)) });
+          }
+          // 2) absolute /assets/<file>  ->  <manifestDir>/assets/<file>  (defensive)
+          if (p.startsWith('/assets/')) {
+            const rel = p.slice('/assets/'.length);
+            return callback({ redirectURL: toFileUrl(path.join(manifestDir, 'assets', rel)) });
+          }
         }
 
         return callback({});
@@ -139,10 +144,7 @@ app.whenReady().then(() => {
   );
 
 
-  const mf = manifestFilePath();
-  if (!mf) {
-    console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specified. Dev HMR only.');
-  }
+
 
   // IPC: read manifest (renderer calls this via preload bridge)
   ipcMain.handle('zcast:read-manifest', async () => {
