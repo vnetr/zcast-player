@@ -10,7 +10,7 @@ import { createHash } from 'crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-// ---- Helpers ----
+// ---- helpers ----
 const toFileUrl = (p: string) => url.pathToFileURL(p).href;
 const sha256    = (s: string) => createHash('sha256').update(s).digest('hex');
 
@@ -90,42 +90,43 @@ app.whenReady().then(() => {
   const manifestDir = mf ? path.dirname(mf) : '';
 
   // ============================
-  // Local hashed cache support
-  // Cache layout produced by bundle:
+  // Hashed cache layout (as extracted by your script)
   //   /media/assets/
-  //     assets-index.json
-  //     u/<urlSha>/<filename>
-  //     h/<contentSha>/<filename>
+  //     assets/                 <-- subdir moved into place
+  //       assets-index.json
+  //       u/<urlSha>/<name>
+  //       h/<contentSha>/<name>
   // ============================
-  const ASSETS_ROOT = '/media/assets';
+  const ASSETS_ROOT         = '/media/assets';           // cache root
+  const ASSETS_SUB          = path.join(ASSETS_ROOT, 'assets'); // where u/, h/, assets-index.json live
+  const INDEX_PATH          = path.join(ASSETS_SUB, 'assets-index.json');
+  const BUNDLE_MARKER_PATH  = path.join(ASSETS_ROOT, '.last_bundle_extracted');
+
   let assetIndex: { items?: Array<{ url:string; urlHash:string; contentHash?:string; name:string; size:number }> } | null = null;
 
   function loadAssetIndex() {
     try {
-      const idxPath = path.join(ASSETS_ROOT, 'assets-index.json');
-      // Note: if permissions are wrong, this will throw — we log and keep assetIndex=null (URL-hash direct check still works)
-      const txt = fs.readFileSync(idxPath, 'utf-8');
+      const txt = fs.readFileSync(INDEX_PATH, 'utf-8');
       assetIndex = JSON.parse(txt);
       console.info('[assets] index loaded:', assetIndex?.items?.length ?? 0, 'entries');
     } catch (e) {
       assetIndex = null;
-      console.warn('[assets] no readable assets-index.json yet (fallback to url-hash only).', String(e));
+      console.warn('[assets] index not readable yet – URL-hash alias only.', String(e));
     }
   }
   loadAssetIndex();
 
-  // If your extractor drops/updates a marker, re-load the index
-  const bundleFlag = path.join(ASSETS_ROOT, '.last_bundle_extracted');
+  // Reload index when extractor touches the marker
   try {
-    fs.watch(ASSETS_ROOT, { persistent: false }, (ev, fname) => {
-      if (fname === '.last_bundle_extracted') {
-        setTimeout(loadAssetIndex, 200); // debounce
+    fs.watch(ASSETS_ROOT, { persistent: false }, (_e, name) => {
+      if (name === '.last_bundle_extracted') {
+        setTimeout(loadAssetIndex, 200);
       }
     });
   } catch {}
 
   // ============================
-  // file:// remaps (fonts + assets fallbacks)
+  // file:// remaps (fonts + file-asset fallbacks)
   // ============================
   const BARE_MEDIA_RE = /\.(png|jpe?g|webp|gif|svg|mp4|m4v|mov|webm|mp3|wav|ogg|ogv|aac|ttf|otf|woff2?)$/i;
 
@@ -135,9 +136,9 @@ app.whenReady().then(() => {
       try {
         const u = new URL(details.url);
         if (u.protocol !== 'file:') return callback({});
-        const p = u.pathname; // absolute
+        const p = u.pathname;
 
-        // ---- Fonts
+        // Fonts
         const bad1 = '/dist/index.html/fonts/';
         if (p.includes(bad1) && distDir) {
           const fontRel = p.slice(p.indexOf(bad1) + bad1.length);
@@ -152,7 +153,7 @@ app.whenReady().then(() => {
           return callback({ redirectURL: toFileUrl(path.join(resFonts, fontRel)) });
         }
 
-        // ---- Player-bundled assets (if the doc ever refers to /assets/* or dist/assets/*)
+        // Player-bundled assets (if doc refers to /assets/* or dist/assets/*)
         if (manifestDir) {
           if (p.includes('/dist/assets/')) {
             const rel = p.split('/dist/assets/')[1];
@@ -174,7 +175,7 @@ app.whenReady().then(() => {
           }
         }
 
-        // ---- Failsafe: any bare media under dist/* → assets/<filename>
+        // Failsafe: any bare media under dist/* → manifestDir/assets/<file>
         if (manifestDir && p.includes('/dist/') && BARE_MEDIA_RE.test(p)) {
           const file = p.split('/').pop()!;
           const target = path.join(manifestDir, 'assets', file);
@@ -190,19 +191,18 @@ app.whenReady().then(() => {
   );
 
   // ============================
-  // http(s) -> local cache redirect using hashed layout
+  // http(s) -> local hashed cache redirect (CRITICAL)
   // ============================
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['http://*/*', 'https://*/*'] },
     (details, callback) => {
       try {
         const remote = details.url;
-        // Compute URL-hash and try alias first
-        const uhash = sha256(remote);
-        const name  = decodeURIComponent(new URL(remote).pathname.split('/').pop() || 'asset');
+        const uhash  = sha256(remote);
+        const name   = decodeURIComponent(new URL(remote).pathname.split('/').pop() || 'asset');
 
-        // 1) URL-hash alias path
-        const aliasPath = path.join(ASSETS_ROOT, 'u', uhash, name);
+        // 1) Try URL-hash alias directly: assets/u/<urlHash>/<name>
+        const aliasPath = path.join(ASSETS_SUB, 'u', uhash, name);
         if (fs.existsSync(aliasPath)) {
           // console.log('[assets] url-hit', remote, '→', aliasPath);
           return callback({ redirectURL: toFileUrl(aliasPath) });
@@ -210,16 +210,16 @@ app.whenReady().then(() => {
 
         // 2) If index is present, try content-hash bucket
         const items = assetIndex?.items || [];
-        const hit = items.find((x) => x.urlHash === uhash);
+        const hit   = items.find((x) => x.urlHash === uhash);
         if (hit?.contentHash) {
-          const contentPath = path.join(ASSETS_ROOT, 'h', hit.contentHash, hit.name);
+          const contentPath = path.join(ASSETS_SUB, 'h', hit.contentHash, hit.name);
           if (fs.existsSync(contentPath)) {
             // console.log('[assets] content-hit', remote, '→', contentPath);
             return callback({ redirectURL: toFileUrl(contentPath) });
           }
         }
 
-        // 3) Fall through to network (e.g., first run before extraction)
+        // 3) Fall through to network (first run before extraction, etc.)
         return callback({});
       } catch (e) {
         console.warn('[assets http hook] error:', e);
