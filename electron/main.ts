@@ -1,4 +1,3 @@
-// src/electron/main.ts
 import { app, BrowserWindow, ipcMain, session } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -6,17 +5,15 @@ import * as url from 'url';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
 
-// ---- ESM friendly __dirname ----
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-// ---- helpers ----
 const toFileUrl = (p: string) => url.pathToFileURL(p).href;
 const sha256    = (s: string) => createHash('sha256').update(s).digest('hex');
 const DEBUG     = /^(1|true|yes)$/i.test(String(process.env.ZCAST_DEBUG_ASSETS || ''));
-const dbg = (...args: any[]) => { if (DEBUG) console.log('[assets]', ...args); };
+const dbg = (...a: any[]) => { if (DEBUG) console.log('[assets]', ...a); };
 
-// ---- Force GPU / HW accel on Linux ----
+// -------- GPU / HW accel --------
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
@@ -58,7 +55,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       webgl: true,
       backgroundThrottling: false,
-      // Allow scheme changes (http -> file, file -> http) the engine does for media
+      // allow file <-> http scheme changes triggered by our redirector
       webSecurity: false,
       allowRunningInsecureContent: true,
     },
@@ -81,23 +78,17 @@ const mf = manifestFilePath();
 if (!mf) console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specified. Dev HMR only.');
 
 app.whenReady().then(() => {
-  const distIndex   = prodIndexHtml();                                  // /opt/.../app.asar/dist/index.html
-  const distDir     = distIndex ? path.dirname(distIndex) : '';         // /opt/.../app.asar/dist
-  const resFonts    = path.join(process.resourcesPath, 'fonts');        // /opt/.../resources/fonts
+  // ---- paths we rely on ----
+  const distIndex   = prodIndexHtml();                          // /opt/.../app.asar/dist/index.html
+  const distDir     = distIndex ? path.dirname(distIndex) : ''; // /opt/.../app.asar/dist
+  const resFonts    = path.join(process.resourcesPath, 'fonts'); // **YOUR fonts live here**
 
-  // ============================
-  // Hashed cache layout
-  //   /media/assets/
-  //     assets/
-  //       assets-index.json
-  //       u/<urlSha>/<name>
-  //       h/<contentSha>/<name>
-  // ============================
+  // Hashed cache only here (do NOT use /media/schedule/assets)
   const ASSETS_ROOT = '/media/assets';
-  const ASSETS_SUB  = path.join(ASSETS_ROOT, 'assets');
+  const ASSETS_SUB  = path.join(ASSETS_ROOT, 'assets');         // u/, h/, assets-index.json
   const INDEX_PATH  = path.join(ASSETS_SUB, 'assets-index.json');
 
-  let assetIndex: { items?: Array<{ url:string; urlHash:string; contentHash?:string; name:string; size:number }> } | null = null;
+  let assetIndex: { items?: Array<{ url:string; urlHash:string; contentHash?:string; name:string }> } | null = null;
 
   function loadAssetIndex() {
     try {
@@ -106,32 +97,31 @@ app.whenReady().then(() => {
       console.info('[assets] index loaded:', assetIndex?.items?.length ?? 0, 'entries');
     } catch (e) {
       assetIndex = null;
-      console.warn('[assets] index not readable yet – URL-hash alias only.', String(e));
+      console.warn('[assets] index not readable – URL-hash alias only.', String(e));
     }
   }
   loadAssetIndex();
 
-  // If your extractor creates a marker file, watch here (optional)
+  // optional: reload index when your extractor touches marker
   try {
     fs.watch(ASSETS_ROOT, { persistent: false }, (_e, name) => {
       if (name === '.last_bundle_extracted') setTimeout(loadAssetIndex, 200);
     });
-  } catch { /* ignore */ }
+  } catch {}
 
-  // ---------- helpers ----------
+  // ---- helpers ----
   const MEDIA_EXTS = new Set([
     'png','jpg','jpeg','webp','gif','svg',
     'mp4','m4v','mov','webm','mp3','wav','ogg','ogv','aac',
     'ttf','otf','woff','woff2'
   ]);
-  const BARE_MEDIA_RE = /\.(png|jpe?g|webp|gif|svg|mp4|m4v|mov|webm|mp3|wav|ogg|ogv|aac|ttf|otf|woff2?)$/i;
 
   function resolveFontPath(fontRel: string): string | null {
-    // try /dist/fonts first, then /resources/fonts (you have fonts here)
-    const tryDist = path.join(distDir, 'fonts', fontRel);
-    if (distDir && fs.existsSync(tryDist)) return tryDist;
+    // Prefer resources/fonts (where you actually ship fonts), then dist/fonts
     const tryRes = path.join(resFonts, fontRel);
     if (fs.existsSync(tryRes)) return tryRes;
+    const tryDist = distDir ? path.join(distDir, 'fonts', fontRel) : '';
+    if (tryDist && fs.existsSync(tryDist)) return tryDist;
     return null;
   }
 
@@ -144,9 +134,11 @@ app.whenReady().then(() => {
       const uhash = sha256(remoteUrl);
       const name  = decodeURIComponent(u.pathname.split('/').pop() || 'asset');
 
+      // url-hash alias
       const aliasPath = path.join(ASSETS_SUB, 'u', uhash, name);
       if (fs.existsSync(aliasPath)) return aliasPath;
 
+      // optional: content-hash via index
       const items = assetIndex?.items || [];
       const hit   = items.find((x) => x.urlHash === uhash);
       if (hit?.contentHash) {
@@ -159,19 +151,20 @@ app.whenReady().then(() => {
     }
   }
 
-  // ============================
-  // file:// remaps  (fonts + “renderer turned http into file://host/...” salvage)
-  // ============================
+  // =========================================================
+  // file:// remaps
+  // 1) Fonts → /opt/zcast-player/resources/fonts
+  // 2) “file://kraken...” salvage → map to local hashed cache (NO http redirect)
+  // =========================================================
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['file://*/*'] },
     (details, callback) => {
       try {
         const u = new URL(details.url);
         if (u.protocol !== 'file:') return callback({});
-
         const p = decodeURIComponent(u.pathname);
 
-        // ---- fonts (as seen in your console: /dist/index.html/fonts/<name>) ----
+        // Fonts: /dist/index.html/fonts/<name>
         const bad1 = '/dist/index.html/fonts/';
         if (p.includes(bad1)) {
           const fontRel = p.slice(p.indexOf(bad1) + bad1.length);
@@ -181,7 +174,7 @@ app.whenReady().then(() => {
             return callback({ redirectURL: toFileUrl(tgt) });
           }
         }
-        // “/dist/assets/.../fonts/<name>”
+        // …/dist/assets/…/fonts/<name>
         if (p.includes('/dist/assets/') && p.includes('/fonts/')) {
           const fontRel = p.split('/fonts/')[1];
           const tgt = resolveFontPath(fontRel);
@@ -190,7 +183,7 @@ app.whenReady().then(() => {
             return callback({ redirectURL: toFileUrl(tgt) });
           }
         }
-        // root-absolute “/fonts/<name>”
+        // /fonts/<name>
         if (p.startsWith('/fonts/')) {
           const fontRel = p.slice('/fonts/'.length);
           const tgt = resolveFontPath(fontRel);
@@ -200,20 +193,20 @@ app.whenReady().then(() => {
           }
         }
 
-        // ---- renderer bug: “file://<domain>/media/.../file.ext”
-        // Turn it back into real http(s), or map to local hashed cache.
+        // Renderer prefetch bug: file://kraken.zignage.com/media/...
+        // Try to map to local hashed cache; if not found, fall back to http.
         if (u.hostname && u.hostname !== 'localhost') {
-          const guessedHttp = `http://${u.hostname}${u.pathname}`; // most of your URLs are http://kraken...
+          const guessedHttp = `http://${u.hostname}${u.pathname}${u.search || ''}`;
           const local = mapRemoteToLocal(guessedHttp);
           if (local) {
             dbg('salvage file://host -> local cache', details.url, '->', local);
             return callback({ redirectURL: toFileUrl(local) });
           }
+          // As a last resort, let it go to HTTP (we allow scheme changes)
           dbg('salvage file://host -> http', details.url, '->', guessedHttp);
           return callback({ redirectURL: guessedHttp });
         }
 
-        // Failsafe: any bare media under /dist/* → leave it alone (comes from app.asar)
         return callback({});
       } catch (e) {
         console.warn('[assets file hook] error:', e);
@@ -222,9 +215,9 @@ app.whenReady().then(() => {
     }
   );
 
-  // ============================
-  // http(s) -> local hashed cache (primary path for media)
-  // ============================
+  // =========================================================
+  // http(s) -> local hashed cache for media
+  // =========================================================
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['http://*/*', 'https://*/*'] },
     (details, callback) => {
@@ -234,7 +227,7 @@ app.whenReady().then(() => {
           dbg('url-hit', details.url, '->', local);
           return callback({ redirectURL: toFileUrl(local) });
         }
-        return callback({}); // network fetch
+        return callback({}); // go to network
       } catch (e) {
         console.warn('[assets http hook] error:', e);
         return callback({});
@@ -242,9 +235,9 @@ app.whenReady().then(() => {
     }
   );
 
-  // ============================
+  // =========================================================
   // IPC: manifest read + watch
-  // ============================
+  // =========================================================
   ipcMain.handle('zcast:read-manifest', async () => {
     const file = manifestFilePath();
     if (!file) return null;
