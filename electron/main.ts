@@ -55,7 +55,6 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       webgl: true,
       backgroundThrottling: false,
-      // allow file <-> http scheme changes triggered by our redirector
       webSecurity: false,
       allowRunningInsecureContent: true,
     },
@@ -78,166 +77,106 @@ const mf = manifestFilePath();
 if (!mf) console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specified. Dev HMR only.');
 
 app.whenReady().then(() => {
-  // ---- paths we rely on ----
-  const distIndex   = prodIndexHtml();                          // /opt/.../app.asar/dist/index.html
-  const distDir     = distIndex ? path.dirname(distIndex) : ''; // /opt/.../app.asar/dist
-  const resFonts    = path.join(process.resourcesPath, 'fonts'); // **YOUR fonts live here**
+  // ---- paths ----
+  const distIndex = prodIndexHtml();                          // /opt/.../app.asar/dist/index.html
+  const distDir   = distIndex ? path.dirname(distIndex) : ''; // /opt/.../app.asar/dist
+  const resFonts  = path.join(process.resourcesPath, 'fonts'); // **REAL font location**
 
-  // Hashed cache only here (do NOT use /media/schedule/assets)
-  const ASSETS_ROOT = '/media/assets';
-  const ASSETS_SUB  = path.join(ASSETS_ROOT, 'assets');         // u/, h/, assets-index.json
-  const INDEX_PATH  = path.join(ASSETS_SUB, 'assets-index.json');
-
-  let assetIndex: { items?: Array<{ url:string; urlHash:string; contentHash?:string; name:string }> } | null = null;
-
-  function loadAssetIndex() {
-    try {
-      const txt = fs.readFileSync(INDEX_PATH, 'utf-8');
-      assetIndex = JSON.parse(txt);
-      console.info('[assets] index loaded:', assetIndex?.items?.length ?? 0, 'entries');
-    } catch (e) {
-      assetIndex = null;
-      console.warn('[assets] index not readable – URL-hash alias only.', String(e));
-    }
-  }
-  loadAssetIndex();
-
-  // optional: reload index when your extractor touches marker
+  // Build a lowercase index of shipped fonts for case-insensitive lookup
+  const fontCaseMap: Record<string, string> = {};
   try {
-    fs.watch(ASSETS_ROOT, { persistent: false }, (_e, name) => {
-      if (name === '.last_bundle_extracted') setTimeout(loadAssetIndex, 200);
-    });
-  } catch {}
+    for (const fn of fs.readdirSync(resFonts)) {
+      fontCaseMap[fn.toLowerCase()] = fn;
+    }
+    if (DEBUG) console.log('[fonts] indexed', Object.keys(fontCaseMap).length, 'files');
+  } catch (e) {
+    console.warn('[fonts] cannot index resources/fonts:', e);
+  }
 
-  // ---- helpers ----
-  const MEDIA_EXTS = new Set([
-    'png','jpg','jpeg','webp','gif','svg',
-    'mp4','m4v','mov','webm','mp3','wav','ogg','ogv','aac',
-    'ttf','otf','woff','woff2'
-  ]);
+  const FONT_FALLBACK = 'Hack-Regular.ttf'; // you ship Hack-*.ttf — safe fallback
 
   function resolveFontPath(fontRel: string): string | null {
-    // Prefer resources/fonts (where you actually ship fonts), then dist/fonts
-    const tryRes = path.join(resFonts, fontRel);
-    if (fs.existsSync(tryRes)) return tryRes;
-    const tryDist = distDir ? path.join(distDir, 'fonts', fontRel) : '';
-    if (tryDist && fs.existsSync(tryDist)) return tryDist;
+    // Try resources/fonts exact
+    let p = path.join(resFonts, fontRel);
+    if (fs.existsSync(p)) return p;
+
+    // Try resources/fonts case-insensitive
+    const base = path.basename(fontRel);
+    const ci = fontCaseMap[base.toLowerCase()];
+    if (ci) {
+      p = path.join(resFonts, ci);
+      if (fs.existsSync(p)) return p;
+    }
+
+    // Try dist/fonts (legacy builds)
+    if (distDir) {
+      const d = path.join(distDir, 'fonts', fontRel);
+      if (fs.existsSync(d)) return d;
+    }
+
+    // Fallback to a known shipped font to avoid 404 spam
+    const fb = path.join(resFonts, FONT_FALLBACK);
+    if (fs.existsSync(fb)) {
+      if (DEBUG) console.log('[fonts] fallback', fontRel, '->', FONT_FALLBACK);
+      return fb;
+    }
     return null;
   }
 
-  function mapRemoteToLocal(remoteUrl: string): string | null {
-    try {
-      const u = new URL(remoteUrl);
-      const ext = (u.pathname.split('.').pop() || '').toLowerCase();
-      if (!MEDIA_EXTS.has(ext)) return null;
-
-      const uhash = sha256(remoteUrl);
-      const name  = decodeURIComponent(u.pathname.split('/').pop() || 'asset');
-
-      // url-hash alias
-      const aliasPath = path.join(ASSETS_SUB, 'u', uhash, name);
-      if (fs.existsSync(aliasPath)) return aliasPath;
-
-      // optional: content-hash via index
-      const items = assetIndex?.items || [];
-      const hit   = items.find((x) => x.urlHash === uhash);
-      if (hit?.contentHash) {
-        const contentPath = path.join(ASSETS_SUB, 'h', hit.contentHash, hit.name);
-        if (fs.existsSync(contentPath)) return contentPath;
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
-  // =========================================================
-  // file:// remaps
-  // 1) Fonts → /opt/zcast-player/resources/fonts
-  // 2) “file://kraken...” salvage → map to local hashed cache (NO http redirect)
-  // =========================================================
+  // ============================
+  // file:// FONT hook (ONLY fonts here)
+  // IMPORTANT: filter must be file://*/* (not *://*/* or file:///*)
+  // ============================
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['file://*/*'] },
     (details, callback) => {
       try {
         const u = new URL(details.url);
         if (u.protocol !== 'file:') return callback({});
-        const p = decodeURIComponent(u.pathname);
+        const p = u.pathname; // already absolute
 
-        // Fonts: /dist/index.html/fonts/<name>
+        // 1) ".../dist/index.html/fonts/<name>" -> resources/fonts/<name>"
         const bad1 = '/dist/index.html/fonts/';
         if (p.includes(bad1)) {
           const fontRel = p.slice(p.indexOf(bad1) + bad1.length);
-          const tgt = resolveFontPath(fontRel);
-          if (tgt) {
-            dbg('font redirect', p, '->', tgt);
-            return callback({ redirectURL: toFileUrl(tgt) });
+          const target = resolveFontPath(fontRel);
+          if (target) {
+            if (DEBUG) console.log('[font hook] redirect1', p, '->', target);
+            return callback({ redirectURL: toFileUrl(target) });
           }
         }
-        // …/dist/assets/…/fonts/<name>
+
+        // 2) ".../dist/assets/index-*.js/.../fonts/<name>" -> resources/fonts/<name>"
         if (p.includes('/dist/assets/') && p.includes('/fonts/')) {
           const fontRel = p.split('/fonts/')[1];
-          const tgt = resolveFontPath(fontRel);
-          if (tgt) {
-            dbg('font redirect2', p, '->', tgt);
-            return callback({ redirectURL: toFileUrl(tgt) });
+          const target  = resolveFontPath(fontRel);
+          if (target) {
+            if (DEBUG) console.log('[font hook] redirect2', p, '->', target);
+            return callback({ redirectURL: toFileUrl(target) });
           }
         }
-        // /fonts/<name>
+
+        // 3) root-absolute "/fonts/<name>" -> resources/fonts/<name>"
         if (p.startsWith('/fonts/')) {
           const fontRel = p.slice('/fonts/'.length);
-          const tgt = resolveFontPath(fontRel);
-          if (tgt) {
-            dbg('font redirect3', p, '->', tgt);
-            return callback({ redirectURL: toFileUrl(tgt) });
+          const target  = resolveFontPath(fontRel);
+          if (target) {
+            if (DEBUG) console.log('[font hook] redirect3', p, '->', target);
+            return callback({ redirectURL: toFileUrl(target) });
           }
         }
 
-        // Renderer prefetch bug: file://kraken.zignage.com/media/...
-        // Try to map to local hashed cache; if not found, fall back to http.
-        if (u.hostname && u.hostname !== 'localhost') {
-          const guessedHttp = `http://${u.hostname}${u.pathname}${u.search || ''}`;
-          const local = mapRemoteToLocal(guessedHttp);
-          if (local) {
-            dbg('salvage file://host -> local cache', details.url, '->', local);
-            return callback({ redirectURL: toFileUrl(local) });
-          }
-          // As a last resort, let it go to HTTP (we allow scheme changes)
-          dbg('salvage file://host -> http', details.url, '->', guessedHttp);
-          return callback({ redirectURL: guessedHttp });
-        }
-
+        // Not a font request; let other handlers (media etc.) deal with it
         return callback({});
       } catch (e) {
-        console.warn('[assets file hook] error:', e);
+        console.warn('[font hook] error:', e);
         return callback({});
       }
     }
   );
 
-  // =========================================================
-  // http(s) -> local hashed cache for media
-  // =========================================================
-  session.defaultSession.webRequest.onBeforeRequest(
-    { urls: ['http://*/*', 'https://*/*'] },
-    (details, callback) => {
-      try {
-        const local = mapRemoteToLocal(details.url);
-        if (local) {
-          dbg('url-hit', details.url, '->', local);
-          return callback({ redirectURL: toFileUrl(local) });
-        }
-        return callback({}); // go to network
-      } catch (e) {
-        console.warn('[assets http hook] error:', e);
-        return callback({});
-      }
-    }
-  );
+  // ====== (keep your existing IPC + watcher) ======
 
-  // =========================================================
-  // IPC: manifest read + watch
-  // =========================================================
   ipcMain.handle('zcast:read-manifest', async () => {
     const file = manifestFilePath();
     if (!file) return null;
