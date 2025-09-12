@@ -1,3 +1,4 @@
+// src/electron/main.ts
 import { app, BrowserWindow, ipcMain, session } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -13,8 +14,7 @@ const __dirname  = path.dirname(__filename);
 const toFileUrl = (p: string) => url.pathToFileURL(p).href;
 const sha256    = (s: string) => createHash('sha256').update(s).digest('hex');
 const DEBUG     = /^(1|true|yes)$/i.test(String(process.env.ZCAST_DEBUG_ASSETS || ''));
-
-function dbg(...args: any[]) { if (DEBUG) console.log('[assets]', ...args); }
+const dbg = (...args: any[]) => { if (DEBUG) console.log('[assets]', ...args); };
 
 // ---- Force GPU / HW accel on Linux ----
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
@@ -58,7 +58,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       webgl: true,
       backgroundThrottling: false,
-      // IMPORTANT: allow http(s) -> file:// redirects for media
+      // Allow scheme changes (http -> file, file -> http) the engine does for media
       webSecurity: false,
       allowRunningInsecureContent: true,
     },
@@ -81,13 +81,12 @@ const mf = manifestFilePath();
 if (!mf) console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specified. Dev HMR only.');
 
 app.whenReady().then(() => {
-  const distIndex   = prodIndexHtml();                          // /opt/.../app.asar/dist/index.html
-  const distDir     = distIndex ? path.dirname(distIndex) : ''; // /opt/.../app.asar/dist
-  const resFonts    = path.join(process.resourcesPath, 'fonts'); // /opt/.../resources/fonts
-  const manifestDir = mf ? path.dirname(mf) : '';               // e.g. /media/schedule
+  const distIndex   = prodIndexHtml();                                  // /opt/.../app.asar/dist/index.html
+  const distDir     = distIndex ? path.dirname(distIndex) : '';         // /opt/.../app.asar/dist
+  const resFonts    = path.join(process.resourcesPath, 'fonts');        // /opt/.../resources/fonts
 
   // ============================
-  // Hashed cache layout (extractor output)
+  // Hashed cache layout
   //   /media/assets/
   //     assets/
   //       assets-index.json
@@ -95,8 +94,8 @@ app.whenReady().then(() => {
   //       h/<contentSha>/<name>
   // ============================
   const ASSETS_ROOT = '/media/assets';
-  const ASSETS_SUB  = path.join(ASSETS_ROOT, 'assets');           // where u/, h/, assets-index.json live
-  const INDEX_PATH  = path.join(ASSETS_SUB, 'assets-index.json'); // mapping (optional)
+  const ASSETS_SUB  = path.join(ASSETS_ROOT, 'assets');
+  const INDEX_PATH  = path.join(ASSETS_SUB, 'assets-index.json');
 
   let assetIndex: { items?: Array<{ url:string; urlHash:string; contentHash?:string; name:string; size:number }> } | null = null;
 
@@ -112,16 +111,14 @@ app.whenReady().then(() => {
   }
   loadAssetIndex();
 
-  // Watch for extractor marker (your script should: touch /media/assets/.last_bundle_extracted)
+  // If your extractor creates a marker file, watch here (optional)
   try {
-    fs.watch(ASSETS_ROOT, { persistent: false }, (_event, name) => {
+    fs.watch(ASSETS_ROOT, { persistent: false }, (_e, name) => {
       if (name === '.last_bundle_extracted') setTimeout(loadAssetIndex, 200);
     });
   } catch { /* ignore */ }
 
-  // ============================
-  // file:// remaps (fonts + local bundle assets)
-  // ============================
+  // ---------- helpers ----------
   const MEDIA_EXTS = new Set([
     'png','jpg','jpeg','webp','gif','svg',
     'mp4','m4v','mov','webm','mp3','wav','ogg','ogv','aac',
@@ -130,6 +127,7 @@ app.whenReady().then(() => {
   const BARE_MEDIA_RE = /\.(png|jpe?g|webp|gif|svg|mp4|m4v|mov|webm|mp3|wav|ogg|ogv|aac|ttf|otf|woff2?)$/i;
 
   function resolveFontPath(fontRel: string): string | null {
+    // try /dist/fonts first, then /resources/fonts (you have fonts here)
     const tryDist = path.join(distDir, 'fonts', fontRel);
     if (distDir && fs.existsSync(tryDist)) return tryDist;
     const tryRes = path.join(resFonts, fontRel);
@@ -137,15 +135,43 @@ app.whenReady().then(() => {
     return null;
   }
 
+  function mapRemoteToLocal(remoteUrl: string): string | null {
+    try {
+      const u = new URL(remoteUrl);
+      const ext = (u.pathname.split('.').pop() || '').toLowerCase();
+      if (!MEDIA_EXTS.has(ext)) return null;
+
+      const uhash = sha256(remoteUrl);
+      const name  = decodeURIComponent(u.pathname.split('/').pop() || 'asset');
+
+      const aliasPath = path.join(ASSETS_SUB, 'u', uhash, name);
+      if (fs.existsSync(aliasPath)) return aliasPath;
+
+      const items = assetIndex?.items || [];
+      const hit   = items.find((x) => x.urlHash === uhash);
+      if (hit?.contentHash) {
+        const contentPath = path.join(ASSETS_SUB, 'h', hit.contentHash, hit.name);
+        if (fs.existsSync(contentPath)) return contentPath;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ============================
+  // file:// remaps  (fonts + “renderer turned http into file://host/...” salvage)
+  // ============================
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['file://*/*'] },
     (details, callback) => {
       try {
         const u = new URL(details.url);
         if (u.protocol !== 'file:') return callback({});
-        const p = u.pathname;
 
-        // ---- fonts FIRST (more robust: try dist/fonts then resources/fonts) ----
+        const p = decodeURIComponent(u.pathname);
+
+        // ---- fonts (as seen in your console: /dist/index.html/fonts/<name>) ----
         const bad1 = '/dist/index.html/fonts/';
         if (p.includes(bad1)) {
           const fontRel = p.slice(p.indexOf(bad1) + bad1.length);
@@ -174,47 +200,20 @@ app.whenReady().then(() => {
           }
         }
 
-        // ---- local assets placed by extractor next to manifest ----
-        if (manifestDir) {
-          // /dist/assets/<file> → <manifestDir>/assets/<file> (ONLY media, not js/css chunks)
-          if (p.includes('/dist/assets/')) {
-            const rel = p.split('/dist/assets/')[1];
-            const clean = rel.split(/[?#]/)[0];
-            const ext = (clean.split('.').pop() || '').toLowerCase();
-            if (MEDIA_EXTS.has(ext)) {
-              const target = path.join(manifestDir, 'assets', rel);
-              dbg('media redirect dist/assets', p, '->', target);
-              return callback({ redirectURL: toFileUrl(target) });
-            }
+        // ---- renderer bug: “file://<domain>/media/.../file.ext”
+        // Turn it back into real http(s), or map to local hashed cache.
+        if (u.hostname && u.hostname !== 'localhost') {
+          const guessedHttp = `http://${u.hostname}${u.pathname}`; // most of your URLs are http://kraken...
+          const local = mapRemoteToLocal(guessedHttp);
+          if (local) {
+            dbg('salvage file://host -> local cache', details.url, '->', local);
+            return callback({ redirectURL: toFileUrl(local) });
           }
-          // /dist/index.html/assets/<file>
-          const badAssets = '/dist/index.html/assets/';
-          if (p.includes(badAssets)) {
-            const rel = p.slice(p.indexOf(badAssets) + badAssets.length);
-            const target = path.join(manifestDir, 'assets', rel);
-            dbg('media redirect idx/assets', p, '->', target);
-            return callback({ redirectURL: toFileUrl(target) });
-          }
-          // absolute /assets/<file>
-          if (p.startsWith('/assets/')) {
-            const rel = p.slice('/assets/'.length);
-            const target = path.join(manifestDir, 'assets', rel);
-            dbg('media redirect /assets', p, '->', target);
-            return callback({ redirectURL: toFileUrl(target) });
-          }
+          dbg('salvage file://host -> http', details.url, '->', guessedHttp);
+          return callback({ redirectURL: guessedHttp });
         }
 
-        // Failsafe: any bare media under /dist/* → <manifestDir>/assets/<filename> if present
-        if (manifestDir && p.includes('/dist/') && BARE_MEDIA_RE.test(p)) {
-          const base = path.join(manifestDir, 'assets');
-          const fname = p.split('/').pop()!;
-          const target = path.join(base, fname);
-          if (fs.existsSync(target)) {
-            dbg('media fallback dist/* -> manifest assets', p, '->', target);
-            return callback({ redirectURL: toFileUrl(target) });
-          }
-        }
-
+        // Failsafe: any bare media under /dist/* → leave it alone (comes from app.asar)
         return callback({});
       } catch (e) {
         console.warn('[assets file hook] error:', e);
@@ -224,42 +223,18 @@ app.whenReady().then(() => {
   );
 
   // ============================
-  // http(s) -> local hashed cache redirect (for remote media)
+  // http(s) -> local hashed cache (primary path for media)
   // ============================
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['http://*/*', 'https://*/*'] },
     (details, callback) => {
       try {
-        const remote = details.url;
-
-        // only consider recognizable media extensions
-        const pathPart = new URL(remote).pathname;
-        const ext = (pathPart.split('.').pop() || '').toLowerCase();
-        if (!MEDIA_EXTS.has(ext)) return callback({});
-
-        const uhash = sha256(remote);
-        const name  = decodeURIComponent(pathPart.split('/').pop() || 'asset');
-
-        // 1) URL-hash alias: assets/u/<urlHash>/<name>
-        const aliasPath = path.join(ASSETS_SUB, 'u', uhash, name);
-        if (fs.existsSync(aliasPath)) {
-          dbg('url-hit', remote, '->', aliasPath);
-          return callback({ redirectURL: toFileUrl(aliasPath) });
+        const local = mapRemoteToLocal(details.url);
+        if (local) {
+          dbg('url-hit', details.url, '->', local);
+          return callback({ redirectURL: toFileUrl(local) });
         }
-
-        // 2) content-hash bucket via index: assets/h/<contentHash>/<name>
-        const items = assetIndex?.items || [];
-        const hit   = items.find((x) => x.urlHash === uhash);
-        if (hit?.contentHash) {
-          const contentPath = path.join(ASSETS_SUB, 'h', hit.contentHash, hit.name);
-          if (fs.existsSync(contentPath)) {
-            dbg('content-hit', remote, '->', contentPath);
-            return callback({ redirectURL: toFileUrl(contentPath) });
-          }
-        }
-
-        // 3) otherwise let it go to network
-        return callback({});
+        return callback({}); // network fetch
       } catch (e) {
         console.warn('[assets http hook] error:', e);
         return callback({});
