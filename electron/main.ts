@@ -96,7 +96,7 @@ app.whenReady().then(() => {
   const resFonts = path.join(process.resourcesPath, 'fonts');
 
   const manifestDir = mf ? path.dirname(mf) : '';
-
+  const toFileUrl = (p: string) => url.pathToFileURL(p).href;
   // Remove any previous handlers you added; we only want ONE
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['file://*/*'] },
@@ -104,9 +104,9 @@ app.whenReady().then(() => {
       try {
         const u = new URL(details.url);
         if (u.protocol !== 'file:') return callback({});
-        const p = u.pathname;
+        const p = u.pathname; // already absolute
 
-        // ---- existing font fixes (keep yours here) ----
+        // ---------- existing FONT fixes (keep your original three rules) ----------
         const bad1 = '/dist/index.html/fonts/';
         if (p.includes(bad1) && distDir) {
           const fontRel = p.slice(p.indexOf(bad1) + bad1.length);
@@ -121,18 +121,41 @@ app.whenReady().then(() => {
           return callback({ redirectURL: toFileUrl(path.join(resFonts, fontRel)) });
         }
 
-        // ---- NEW: map assets to extracted bundle near manifest ----
+        // ---------- NEW: general /dist/assets redirect to local extracted assets ----------
         if (manifestDir) {
-          // 1) /dist/index.html/assets/<file>  ->  <manifestDir>/assets/<file>
+          // /dist/assets/<file>  (common case)
+          if (p.includes('/dist/assets/')) {
+            const rel = p.split('/dist/assets/')[1];
+
+            // Don’t redirect app code chunks (.js/.mjs/.css/.map); only media & images
+            const clean = rel.split(/[?#]/)[0];
+            const ext = (clean.split('.').pop() || '').toLowerCase();
+            const MEDIA_EXTS = new Set([
+              'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg',
+              'mp4', 'm4v', 'mov', 'webm', 'mp3', 'wav', 'ogg', 'ogv', 'aac',
+              'ttf', 'otf', 'woff', 'woff2'
+            ]);
+
+            if (MEDIA_EXTS.has(ext)) {
+              const target = path.join(manifestDir, 'assets', rel);
+              return callback({ redirectURL: toFileUrl(target) });
+            }
+            // fall-through for .js/.css chunks → load from app.asar
+          }
+
+          // safety: /dist/index.html/assets/<file>
           const badAssets = '/dist/index.html/assets/';
           if (p.includes(badAssets)) {
             const rel = p.slice(p.indexOf(badAssets) + badAssets.length);
-            return callback({ redirectURL: toFileUrl(path.join(manifestDir, 'assets', rel)) });
+            const target = path.join(manifestDir, 'assets', rel);
+            return callback({ redirectURL: toFileUrl(target) });
           }
-          // 2) absolute /assets/<file>  ->  <manifestDir>/assets/<file>  (defensive)
+
+          // absolute /assets/<file>
           if (p.startsWith('/assets/')) {
             const rel = p.slice('/assets/'.length);
-            return callback({ redirectURL: toFileUrl(path.join(manifestDir, 'assets', rel)) });
+            const target = path.join(manifestDir, 'assets', rel);
+            return callback({ redirectURL: toFileUrl(target) });
           }
         }
 
