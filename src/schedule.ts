@@ -15,11 +15,13 @@ function toByDayCode(x: unknown): ByDayCode | null {
   const s = String(x ?? '').toLowerCase();
   return isByDayCode(s) ? s : null;
 }
+
+// Correct weekday mapping: Luxon 1..7 = Mon..Sun
+const DOW: ByDayCode[] = ['mo','tu','we','th','fr','sa','su'];
 function dayCodeFromLuxon(weekday: number): ByDayCode {
-  // Luxon: 1=Mon..7=Sun
-  const map: Record<number, ByDayCode> =
-    {1:'mo',2:'tu','3':'we' as any,'4':'th' as any,'5':'fr' as any,'6':'sa' as any,'7':'su' as any};
-  return map[weekday];
+  // guard in case weekday is 0 or >7
+  const i = ((weekday - 1) % 7 + 7) % 7;
+  return DOW[i];
 }
 
 // Shape of the **new** schedule item we evaluate internally
@@ -34,10 +36,12 @@ type NewItem = {
   priority?: number;
   media?: any;                   // layout JSON (must have type === 'layout')
   timeZone?: string;             // optional per-item TZ
+  name?: string;                 // optional, for logs
   // other fields ignored
 };
 
 // ---------- Normalization: accept array/single, flat/nested ----------
+
 function looksFlat(x: any): x is NewItem {
   return x && typeof x === 'object' && 'media' in x && x.media && typeof x.media === 'object';
 }
@@ -45,19 +49,19 @@ function looksNested(x: any): x is { data: NewItem } {
   return x && typeof x === 'object' && x.data && typeof x.data === 'object' && 'media' in x.data;
 }
 
-// Some APIs wrap arrays as {results:[…]} or {data:[…]}
+// Some APIs wrap arrays as {results:[…]} or {data:[…]} or {items:[…]}
 function unwrapListWrappers(x: any): any {
   if (x && typeof x === 'object') {
-    if (Array.isArray(x.results)) return x.results;
-    if (Array.isArray(x.data))    return x.data;
-    if (Array.isArray(x.items))   return x.items;
+    if (Array.isArray((x as any).results)) return (x as any).results;
+    if (Array.isArray((x as any).data))    return (x as any).data;
+    if (Array.isArray((x as any).items))   return (x as any).items;
   }
   return x;
 }
 
 function normalize(manifest: any): NewItem[] {
   const raw = unwrapListWrappers(manifest);
-  let out: NewItem[] = [];
+  const out: NewItem[] = [];
 
   if (Array.isArray(raw)) {
     for (const it of raw) {
@@ -163,6 +167,7 @@ export function pickActiveContent(manifest: any, nowJS: Date = new Date()): Acti
 
     // DEBUG per-candidate
     console.groupCollapsed(`[schedule] item #${idx} (priority=${Number(d.priority ?? 0)})`);
+    console.info('name:', d.name ?? '(unnamed)');
     console.info('tz:', tz, '| now:', now.toISO());
     console.info('inceptAt:', incept?.toISO() ?? '(none)', '| expireAt:', expire?.toISO() ?? '(none)');
     console.info('fromTime:', d.fromTime ?? '(00:00:00.000)', '| toTime:', d.toTime ?? '(23:59:59.999)');
