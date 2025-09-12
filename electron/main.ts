@@ -85,13 +85,15 @@ app.whenReady().then(() => {
   // Build a lowercase index of shipped fonts for case-insensitive lookup
   const fontCaseMap: Record<string, string> = {};
   try {
-    for (const fn of fs.readdirSync(resFonts)) fontCaseMap[fn.toLowerCase()] = fn;
+    for (const fn of fs.readdirSync(resFonts)) {
+      fontCaseMap[fn.toLowerCase()] = fn;
+    }
     if (DEBUG) console.log('[fonts] indexed', Object.keys(fontCaseMap).length, 'files');
   } catch (e) {
     console.warn('[fonts] cannot index resources/fonts:', e);
   }
 
-  const FONT_FALLBACK = 'Hack-Regular.ttf'; // safe fallback you ship
+  const FONT_FALLBACK = 'Hack-Regular.ttf'; // safe fallback
 
   function resolveFontPath(fontRel: string): string | null {
     // Try resources/fonts exact
@@ -122,7 +124,7 @@ app.whenReady().then(() => {
   }
 
   // ============================
-  // 1) file:// FONT HOOK (first) — catch *all* fonts
+  // file:// FONT hook (FIRST) — catch every “.../fonts/<name>.(ttf|otf|woff|woff2)”
   // IMPORTANT: filter must be file://*/* (not *://*/* or file:///*)
   // ============================
   session.defaultSession.webRequest.onBeforeRequest(
@@ -131,11 +133,10 @@ app.whenReady().then(() => {
       try {
         const u = new URL(details.url);
         if (u.protocol !== 'file:') return callback({});
-        const p = decodeURIComponent(u.pathname);
+        const p = decodeURIComponent(u.pathname); // <- decode in case of %20 etc.
 
-        // Stronger match: any path containing /fonts/ and ending in a font extension
-        const isFont = p.includes('/fonts/') && /\.(ttf|otf|woff2?|TTF|OTF|WOFF2?)$/.test(p);
-        if (isFont) {
+        // If it looks like a font path anywhere under /fonts/, handle it
+        if (p.includes('/fonts/') && /\.(ttf|otf|woff2?|TTF|OTF|WOFF2?)$/.test(p)) {
           const fontRel = p.substring(p.lastIndexOf('/fonts/') + '/fonts/'.length);
           const target  = resolveFontPath(fontRel);
           if (target) {
@@ -154,7 +155,7 @@ app.whenReady().then(() => {
   );
 
   // ============================
-  // 2) MEDIA: hashed cache (NO schedule assets)
+  // MEDIA: hashed cache (NO schedule assets)
   //   /media/assets/assets/
   //     u/<urlSha>/<filename>
   //     h/<contentSha>/<filename>
