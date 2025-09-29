@@ -58,7 +58,7 @@
   "author": "Vasyl Netrebiak <vnetreby@gmail.com>",
   "license": "ISC",
   "dependencies": {
-    "@zignage/layout-renderer": "^5.0.3-2.2-lcpa",
+    "@zignage/layout-renderer": "5.0.35-lcpa.3",
     "compression": "^1.8.1",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
