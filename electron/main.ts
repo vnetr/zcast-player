@@ -6,11 +6,11 @@ import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname  = path.dirname(__filename);
+const __dirname = path.dirname(__filename);
 
 const toFileUrl = (p: string) => url.pathToFileURL(p).href;
-const sha256    = (s: string) => createHash('sha256').update(s).digest('hex');
-const DEBUG     = /^(1|true|yes)$/i.test(String(process.env.ZCAST_DEBUG_ASSETS || ''));
+const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+const DEBUG = /^(1|true|yes)$/i.test(String(process.env.ZCAST_DEBUG_ASSETS || ''));
 
 // -------- GPU / HW accel --------
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
@@ -52,6 +52,7 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      enableBlinkFeatures: 'WebXR,WebXRIncubations',
       preload: path.join(__dirname, 'preload.js'),
       webgl: true,
       backgroundThrottling: false,
@@ -79,8 +80,8 @@ if (!mf) console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specifi
 app.whenReady().then(() => {
   // ---- paths ----
   const distIndex = prodIndexHtml();                          // /opt/.../app.asar/dist/index.html
-  const distDir   = distIndex ? path.dirname(distIndex) : ''; // /opt/.../app.asar/dist
-  const resFonts  = path.join(process.resourcesPath, 'fonts'); // **REAL font location**
+  const distDir = distIndex ? path.dirname(distIndex) : ''; // /opt/.../app.asar/dist
+  const resFonts = path.join(process.resourcesPath, 'fonts'); // **REAL font location**
   const resFontsSlash = resFonts.replace(/\\/g, '/');          // normalize for comparisons
 
   // ===== Fonts: build lookup maps =====
@@ -121,7 +122,7 @@ app.whenReady().then(() => {
   function resolveFontPath(requestName: string): string | null {
     if (!resFontsExists) return null;
     const base = path.basename(requestName);                 // e.g. "uni.next-pro-thin.ttf"
-    const lc   = base.toLowerCase();
+    const lc = base.toLowerCase();
     const norm = normalize(base);
 
     // 1) resources/fonts (case-insensitive)
@@ -148,11 +149,11 @@ app.whenReady().then(() => {
             if (fs.existsSync(p)) return p;
           }
         }
-      } catch {}
+      } catch { }
     }
     // 4) fallback
     const ext = (base.split('.').pop() || '').toLowerCase();
-    const fb  = pickFallback(ext);
+    const fb = pickFallback(ext);
     if (fb) {
       if (DEBUG) console.log('[fonts] fallback', base, '->', path.basename(fb));
       return fb;
@@ -164,16 +165,16 @@ app.whenReady().then(() => {
   // MEDIA hashed cache (unchanged)
   // ============================
   const ASSETS_ROOT = '/media/assets';
-  const ASSETS_SUB  = path.join(ASSETS_ROOT, 'assets');
-  const INDEX_PATH  = path.join(ASSETS_SUB, 'assets-index.json');
+  const ASSETS_SUB = path.join(ASSETS_ROOT, 'assets');
+  const INDEX_PATH = path.join(ASSETS_SUB, 'assets-index.json');
 
   const MEDIA_EXTS = new Set([
-    'png','jpg','jpeg','webp','gif','svg',
-    'mp4','m4v','mov','webm','mp3','wav','ogg','ogv','aac'
+    'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg',
+    'mp4', 'm4v', 'mov', 'webm', 'mp3', 'wav', 'ogg', 'ogv', 'aac'
   ]);
 
   let assetIndex:
-    | { items?: Array<{ url:string; urlHash:string; contentHash?:string; name:string }> }
+    | { items?: Array<{ url: string; urlHash: string; contentHash?: string; name: string }> }
     | null = null;
 
   function loadAssetIndex() {
@@ -192,7 +193,7 @@ app.whenReady().then(() => {
     fs.watch(ASSETS_ROOT, { persistent: false }, (_e, name) => {
       if (name === '.last_bundle_extracted') setTimeout(loadAssetIndex, 200);
     });
-  } catch {}
+  } catch { }
 
   function mapRemoteToLocal(remoteUrl: string): string | null {
     try {
@@ -201,7 +202,7 @@ app.whenReady().then(() => {
       if (!MEDIA_EXTS.has(ext)) return null;
 
       const uhash = sha256(remoteUrl);
-      const name  = decodeURIComponent(u.pathname.split('/').pop() || 'asset');
+      const name = decodeURIComponent(u.pathname.split('/').pop() || 'asset');
 
       // 1) url-hash alias
       const aliasPath = path.join(ASSETS_SUB, 'u', uhash, name);
@@ -246,7 +247,7 @@ app.whenReady().then(() => {
         const pSlash = p.replace(/\\/g, '/');
 
         // --- Loop guard: if we're already pointing into resources/fonts, pass through
-        if (pSlash.startsWith(resFontsSlash.replace(/\\/g,'/'))) {
+        if (pSlash.startsWith(resFontsSlash.replace(/\\/g, '/'))) {
           return callback({});
         }
 
@@ -254,7 +255,7 @@ app.whenReady().then(() => {
         const isFont = pSlash.includes('/fonts/') && /\.(ttf|otf|woff2?|TTF|OTF|WOFF2?)$/.test(pSlash);
         if (isFont) {
           const reqName = pSlash.substring(pSlash.lastIndexOf('/fonts/') + '/fonts/'.length);
-          const target  = resolveFontPath(reqName);
+          const target = resolveFontPath(reqName);
           if (target && fs.existsSync(target)) {
             const redirectURL = toFileUrl(target);
             if (DEBUG) console.log('[font hook] redirect', pSlash, '->', redirectURL);
@@ -268,7 +269,7 @@ app.whenReady().then(() => {
         // Only for "file://<hostname>/..." shapes; normal "file:///..." has no hostname
         if (u.hostname && u.hostname !== 'localhost') {
           const httpGuess = `http://${u.hostname}${decodeURIComponent(u.pathname)}${u.search || ''}`;
-          const local     = mapRemoteToLocal(httpGuess);
+          const local = mapRemoteToLocal(httpGuess);
           if (local) {
             if (DEBUG) console.log('[assets] salvage file://host -> local', details.url, '->', local);
             return callback({ redirectURL: toFileUrl(local) });
@@ -285,6 +286,24 @@ app.whenReady().then(() => {
       }
     }
   );
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const headers = details.responseHeaders || {};
+
+    // Remove any existing Permissions-Policy
+    Object.keys(headers).forEach(k => {
+      if (k.toLowerCase() === 'permissions-policy' || k.toLowerCase() === 'feature-policy') {
+        delete headers[k];
+      }
+    });
+
+    // Inject a permissive policy for your app
+    headers['Permissions-Policy'] = [
+      'fullscreen=(self "*"), xr-spatial-tracking=(self "*")'
+    ];
+
+    callback({ responseHeaders: headers });
+  });
 
   // ====== IPC + manifest watcher ======
   ipcMain.handle('zcast:read-manifest', async () => {
