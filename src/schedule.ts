@@ -3,7 +3,7 @@ import { DateTime } from 'luxon';
 
 // ---------- CONFIG ----------
 const DEFAULT_TZ = 'America/New_York';
-const DEFAULT_SLOT_MS = 15_000;   // if layout has no timeline
+const DEFAULT_SLOT_MS = 15_000;   // if layout/playlist has no timeline
 const MIN_SLOT_MS = 2_000;        // never switch faster than this
 const MAX_SLOT_MS = 5 * 60_000;   // protect against crazy timelines
 // ----------------------------
@@ -35,7 +35,7 @@ type NewItem = {
   workingDays?: boolean;
   weekend?: boolean;
   priority?: number;
-  media?: any;          // layout (must have type === 'layout')
+  media?: any;          // layout OR playlist
   timeZone?: string;
   name?: string;
   // pass-through fields ignored by the engine
@@ -108,7 +108,7 @@ function allowedToday(
   return true;
 }
 
-// ---------- Duration extraction from layout ----------
+// ---------- Duration extraction ----------
 function layoutTimelineMs(layout: any): number {
   if (!layout || typeof layout !== 'object') return DEFAULT_SLOT_MS;
   let maxEnd = 0;
@@ -130,6 +130,25 @@ function layoutTimelineMs(layout: any): number {
 
   const ms = Math.min(Math.max(maxEnd || DEFAULT_SLOT_MS, MIN_SLOT_MS), MAX_SLOT_MS);
   return ms;
+}
+
+function playlistTimelineMs(playlist: any): number {
+  if (!playlist || !Array.isArray(playlist.items) || playlist.items.length === 0) {
+    return DEFAULT_SLOT_MS;
+  }
+  let total = 0;
+  for (const it of playlist.items) {
+    let dur =
+      Number(it?.duration_overwrite) ||
+      Number(it?.originalDocument?.options?.duration) ||
+      Number(it?.originalDocument?.options?.end) ||
+      0;
+
+    if (!Number.isFinite(dur) || dur <= 0) dur = DEFAULT_SLOT_MS;
+    dur = Math.min(Math.max(dur, MIN_SLOT_MS), MAX_SLOT_MS);
+    total += dur;
+  }
+  return Math.max(total || DEFAULT_SLOT_MS, MIN_SLOT_MS);
 }
 
 // ---------- Public shape ----------
@@ -155,7 +174,7 @@ type EvalItem = {
   name: string;
   priority: number;
   tz: string;
-  layout: any;
+  layout: any;        // may be a layout OR a playlist doc
   active: boolean;
   slotMs: number;
   nextChangeMs: number;   // when this item's active state might change
@@ -206,7 +225,10 @@ export class ScheduleEngine {
       const allowedDay = allowedToday(todayCode, d.days, d.workingDays, d.weekend);
       const withinDayWindow = now >= dayStart && now <= dayEnd;
 
-      const active = !!(d.media && d.media.type === 'layout') && withinDates && allowedDay && withinDayWindow;
+      const isRenderable =
+        !!d.media && (d.media.type === 'layout' || d.media.type === 'playlist');
+
+      const active = isRenderable && withinDates && allowedDay && withinDayWindow;
 
       // compute next change moment for this item
       let next: DateTime | null = null;
@@ -220,8 +242,15 @@ export class ScheduleEngine {
       }
       if (expire && expire.isValid && next > expire)      next = expire.plus({ millisecond: 1 });
 
+      // final guard: never schedule a boundary in the past
+      if (next && next < now)                             next = now.plus({ milliseconds: 250 });
+
       const layout = d.media;
-      const slotMs = layoutTimelineMs(layout);
+      const slotMs =
+        d.media?.type === 'playlist'
+          ? playlistTimelineMs(d.media)
+          : layoutTimelineMs(d.media);
+
       return {
         idx,
         name: (d.name || layout?.name || '') as string,
