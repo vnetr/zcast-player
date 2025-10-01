@@ -1,31 +1,7 @@
 // src/renderer.ts
 import { ScheduleEngine } from './schedule';
-
-async function loadRendererModule() {
-  if (import.meta.env.DEV) {
-    await import('@zignage/layout-renderer');
-    return;
-  }
-  const url = new URL('../vendor/layout-renderer.js', import.meta.url).href;
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`failed to fetch layout-renderer: ${resp.status}`);
-  const src = await resp.text();
-  const patched = src.replace(/e\("design:type",\s*[A-Za-z_$][\w$]*\)/g, 'e("design:type", Object)');
-  const blob = new Blob([patched], { type: 'text/javascript' });
-  const blobUrl = URL.createObjectURL(blob);
-  try { await import(/* @vite-ignore */ blobUrl); } finally { URL.revokeObjectURL(blobUrl); }
-}
-
-type LayoutRendererEl = HTMLElement & {
-  document: any;
-  editingMode: 'false' | 'true' | 'template';
-  playbackMode: 'gpu' | 'cpu' | 'step';
-  frameRate: number;
-  zoomFactor: number;
-  play: () => Promise<void>;
-  pause: () => Promise<void>;
-  stop: () => Promise<void>;
-};
+import type { RendererKind, BaseRendererEl } from './types/renderers';
+import { loadRenderer, createRendererEl } from './renderer/loader';
 
 declare global {
   interface Window {
@@ -41,23 +17,27 @@ let engine: ScheduleEngine | null = null;
 let loopTimer: ReturnType<typeof setTimeout> | null = null;
 let manifestVersion = 0;
 
-// double buffer containers / players
+// ---------- double buffer containers / players ----------
 let stageA!: HTMLDivElement;
 let stageB!: HTMLDivElement;
 let activeStage!: HTMLDivElement;
 let backStage!: HTMLDivElement;
-let playerA!: LayoutRendererEl;
-let playerB!: LayoutRendererEl;
-let activePlayer!: LayoutRendererEl;
-let backPlayer!: LayoutRendererEl;
+let playerA!: BaseRendererEl;
+let playerB!: BaseRendererEl;
+let activePlayer!: BaseRendererEl;
+let backPlayer!: BaseRendererEl;
+let activeKind: RendererKind = 'layout';
+let backKind: RendererKind = 'layout';
 
-let lastGoodLayout: any = null;
+// Track last successfully shown doc (by kind+id) to avoid redundant swaps
+let lastGood: { kind: RendererKind; id?: string | number } | null = null;
 
 // ---------- DOM bootstrap (once) ----------
 async function ensureStages() {
   if (stageA) return;
 
-  await loadRendererModule();
+  // Always load layout renderer; playlist is loaded on demand
+  await loadRenderer('layout');
 
   const stage = document.createElement('div');
   stage.className = 'stage';
@@ -71,37 +51,34 @@ async function ensureStages() {
   stageA = stage.querySelector('#layerA') as HTMLDivElement;
   stageB = stage.querySelector('#layerB') as HTMLDivElement;
 
-  playerA = document.createElement('layout-renderer') as LayoutRendererEl;
-  playerB = document.createElement('layout-renderer') as LayoutRendererEl;
-
-  for (const el of [playerA, playerB]) {
-    el.editingMode = 'false';
-    el.playbackMode = 'gpu';
-    el.frameRate = 30;
-    el.zoomFactor = 1;
-    (el.style as any).position = 'absolute';
-    (el.style as any).inset = '0';
-  }
+  // Start with <layout-renderer> on both layers
+  playerA = createRendererEl('layout');
+  playerB = createRendererEl('layout');
 
   stageA.appendChild(playerA);
   stageB.appendChild(playerB);
 
   activeStage = stageA; backStage = stageB;
   activePlayer = playerA; backPlayer = playerB;
+  activeKind = 'layout'; backKind = 'layout';
 }
 
-// ---------- helpers: real event + heuristic readiness ----------
-function waitLayoutLoaded(el: HTMLElement, timeoutMs = 6000): Promise<void> {
+// ---------- helpers: readiness & events ----------
+function waitLoaded(el: HTMLElement, kind: RendererKind, timeoutMs = 6000): Promise<void> {
+  // Playlist renderer .d.ts does not define a "loaded" event; skip event wait.
+  if (kind === 'playlist') return Promise.resolve();
+
+  const eventName = 'layoutLoaded';
   return new Promise<void>((resolve, reject) => {
     let done = false;
     const onLoaded = () => { if (!done) { done = true; cleanup(); resolve(); } };
-    const t = setTimeout(() => { if (!done) { done = true; cleanup(); reject(new Error('layoutLoaded timeout')); } }, timeoutMs);
-    const cleanup = () => { clearTimeout(t); el.removeEventListener('layoutLoaded', onLoaded as any); };
-    el.addEventListener('layoutLoaded', onLoaded as any, { once: true });
+    const t = setTimeout(() => { if (!done) { done = true; cleanup(); reject(new Error(`${eventName} timeout`)); } }, timeoutMs);
+    const cleanup = () => { clearTimeout(t); el.removeEventListener(eventName as any, onLoaded as any); };
+    el.addEventListener(eventName as any, onLoaded as any, { once: true });
   });
 }
 
-async function waitReady(el: LayoutRendererEl, timeoutMs = 6000) {
+async function waitReady(el: BaseRendererEl, timeoutMs = 6000) {
   // Try a quick play to initialize scene; ignore failures here.
   try { await el.play(); } catch {}
 
@@ -116,14 +93,56 @@ async function waitReady(el: LayoutRendererEl, timeoutMs = 6000) {
   ]);
 }
 
-// ---------- layout render off-screen ----------
-async function prepareOffscreen(layout: any) {
-  try { await backPlayer.stop(); } catch {}
-  backPlayer.document = layout;
+// Ensure the **back** layer hosts the correct renderer kind
+async function ensureBackKind(kind: RendererKind) {
+  if (backKind === kind) return;
 
-  // Prefer the component’s own load signal, then ask it to play, then heuristic settle.
-  await waitLayoutLoaded(backPlayer).catch(() => {}); // don’t hard-fail if event not emitted
+  // Load the web component (once per process)
+  await loadRenderer(kind);
+
+  // Replace back element with correct tag
+  try { backPlayer?.pause?.(); } catch {}
+  try { backPlayer?.stop?.(); } catch {}
+  if (backPlayer && backPlayer.parentElement) backPlayer.parentElement.removeChild(backPlayer);
+
+  backPlayer = createRendererEl(kind);
+  backStage.appendChild(backPlayer);
+  backKind = kind;
+}
+
+// ---------- resolve next scheduled doc ----------
+function resolveNextFromEngineItem(item: any): { kind: RendererKind; doc: any; id?: string | number } {
+  // Common shapes coming from schedule engine or raw manifest:
+  // - item.layout (could be a layout or a playlist doc)
+  // - item.media (schedule.data.media)
+  // - item.document (defensive)
+  const raw = item?.layout ?? item?.media ?? item?.document ?? item;
+
+  // Identify playlist vs layout by explicit type or presence of items[]
+  const looksPlaylist = !!raw && (raw.type === 'playlist' || Array.isArray(raw.items));
+  const kind: RendererKind = looksPlaylist ? 'playlist' : 'layout';
+
+  // Use raw as the doc directly (both renderers accept `.document`)
+  const doc = raw;
+
+  // Prefer explicit id; fall back to name if present
+  const id = doc?.id ?? doc?.name;
+  return { kind, doc, id };
+}
+
+// ---------- render off-screen (generic for both kinds) ----------
+async function prepareOffscreen(kind: RendererKind, doc: any) {
+  await ensureBackKind(kind);
+  try { await backPlayer.stop(); } catch {}
+
+  // Assign the document for the renderer (both accept .document)
+  (backPlayer as any).document = doc;
+
+  // For layout we listen for 'layoutLoaded'; for playlist we skip the event.
+  await waitLoaded(backPlayer as unknown as HTMLElement, kind).catch(() => {});
   try { await backPlayer.play(); } catch {}
+
+  // Heuristic settle for both kinds (advances a few RAFs).
   await waitReady(backPlayer).catch(() => {});
 }
 
@@ -132,16 +151,16 @@ async function swapLayers() {
   activeStage.classList.remove('visible'); activeStage.classList.add('hidden');
   backStage.classList.remove('hidden');    backStage.classList.add('visible');
 
-  // swap refs
+  // swap refs & kinds
   [activeStage, backStage] = [backStage, activeStage];
   [activePlayer, backPlayer] = [backPlayer, activePlayer];
+  [activeKind, backKind] = [backKind, activeKind];
 
-  // ensure the now-visible player is actually playing
+  // Ensure the now-visible player is playing
   try { await activePlayer.play(); } catch {}
-  // one more nudge on next frame (helps hidden→visible autoplay edge cases)
   requestAnimationFrame(async () => { try { await activePlayer.play(); } catch {} });
 
-  // optional: quiet the back player to save resources
+  // Quiet the hidden one
   try { backPlayer.pause(); } catch {}
 }
 
@@ -149,7 +168,6 @@ async function swapLayers() {
 function stopLoop() {
   if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
 }
-
 function scheduleNext(ms: number) {
   stopLoop();
   loopTimer = setTimeout(() => tick(manifestVersion), ms);
@@ -162,17 +180,17 @@ async function tick(versionAtStart: number) {
   if (versionAtStart !== manifestVersion) return;
 
   if (!item) {
-    // Keep last good on screen; retry soon — never blank
     scheduleNext(Math.min(1000, Math.max(250, tickMs)));
     return;
   }
 
-  const nextLayout = item.layout;
+  const next = resolveNextFromEngineItem(item);
   const same =
-    lastGoodLayout &&
-    nextLayout &&
-    ((lastGoodLayout === nextLayout) ||
-     (lastGoodLayout.id && nextLayout.id && lastGoodLayout.id === nextLayout.id));
+    lastGood &&
+    lastGood.kind === next.kind &&
+    lastGood.id &&
+    next.id &&
+    lastGood.id === next.id;
 
   if (same) {
     scheduleNext(Math.max(500, tickMs));
@@ -180,13 +198,12 @@ async function tick(versionAtStart: number) {
   }
 
   try {
-    await prepareOffscreen(nextLayout);
+    await prepareOffscreen(next.kind, next.doc);
     if (versionAtStart !== manifestVersion) return;
     await swapLayers();
-    lastGoodLayout = nextLayout;
+    lastGood = { kind: next.kind, id: next.id };
   } catch (e) {
-    console.error('[renderer] prepare/swap failed; keep current', e);
-    // stay on current; try again soon
+    console.error('[renderer] prepare/swap failed; keeping current item', e);
   }
 
   scheduleNext(Math.max(500, tickMs));
