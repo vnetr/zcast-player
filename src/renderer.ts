@@ -23,7 +23,6 @@ let stageB!: HTMLDivElement;
 let activeStage!: HTMLDivElement;
 let backStage!: HTMLDivElement;
 
-// Lazily created renderer elements (can be null until first use)
 let playerA: BaseRendererEl | null = null;
 let playerB: BaseRendererEl | null = null;
 let activePlayer: BaseRendererEl | null = null;
@@ -52,7 +51,12 @@ async function ensureStages() {
   stageB = stage.querySelector('#layerB') as HTMLDivElement;
 
   activeStage = stageA;
-  backStage = stageB;
+  backStage   = stageB;
+
+  // Preload and register the layout renderer early.
+  // Playlist internally instantiates <layout-renderer>, so it MUST be defined first.
+  await loadRenderer('layout');
+  await customElements.whenDefined('layout-renderer');
 }
 
 // ---------- helpers: readiness & events ----------
@@ -87,10 +91,20 @@ async function waitReady(el: BaseRendererEl, timeoutMs = 6000) {
 
 // ---------- ensure the back layer has the right element, with doc set BEFORE append ----------
 async function ensureBackRenderer(kind: RendererKind, doc: any) {
+  // If playlist is requested, guarantee <layout-renderer> is already defined,
+  // because playlist will create and control it internally.
+  if (kind === 'playlist') {
+    await loadRenderer('layout');
+    await customElements.whenDefined('layout-renderer');
+    await loadRenderer('playlist');
+    await customElements.whenDefined('playlist-renderer');
+  } else {
+    await loadRenderer('layout');
+    await customElements.whenDefined('layout-renderer');
+  }
+
   // If the back element is missing or a different kind, replace it.
   if (!backPlayer || backKind !== kind) {
-    await loadRenderer(kind);
-
     // Remove old back element if present
     if (backPlayer?.parentElement) {
       try { backPlayer.pause?.(); } catch {}
@@ -106,7 +120,6 @@ async function ensureBackRenderer(kind: RendererKind, doc: any) {
     backPlayer = el;
     backKind = kind;
 
-    // Book-keep initial references
     if (!playerA)      playerA = el;
     else if (!playerB) playerB = el;
 
@@ -141,6 +154,7 @@ function resolveNextFromEngineItem(item: any): { kind: RendererKind; doc: any; i
 async function prepareOffscreen(kind: RendererKind, doc: any) {
   await ensureStages();
   await ensureBackRenderer(kind, doc);
+
   try { await backPlayer?.stop?.(); } catch {}
 
   await waitLoaded(backPlayer as unknown as HTMLElement, kind).catch(() => {});
