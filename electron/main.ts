@@ -5,6 +5,38 @@ import * as url from 'url';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
 
+// =======================
+// Safety: never die on EPIPE / logging
+// =======================
+const wrapWrite = (orig: (chunk: any, ...rest: any[]) => any) =>
+  function safeWrite(this: any, chunk: any, ...rest: any[]) {
+    try { return orig.call(this, chunk, ...rest); }
+    catch (e: any) { if (e && e.code === 'EPIPE') return true; throw e; }
+  };
+
+try {
+  // @ts-ignore
+  process.stdout.write = wrapWrite(process.stdout.write.bind(process.stdout));
+  // @ts-ignore
+  process.stderr.write = wrapWrite(process.stderr.write.bind(process.stderr));
+} catch { /* no-op */ }
+
+process.on('uncaughtException', (err: any) => {
+  if (err && err.code === 'EPIPE') return;
+  try { console.error('[main] uncaughtException:', err); } catch {}
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  try { console.error('[main] unhandledRejection:', reason); } catch {}
+});
+
+// (Dev only) silence Electron’s CSP banner; prod doesn’t show it anyway
+if (!app.isPackaged) {
+  process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
+}
+
+// =======================
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -56,6 +88,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       webgl: true,
       backgroundThrottling: false,
+
+      // Signage-friendly security posture (you already rely on these)
       webSecurity: false,               // allow scheme changes
       allowRunningInsecureContent: true // http assets alongside file://
     },
@@ -79,10 +113,10 @@ if (!mf) console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specifi
 
 app.whenReady().then(() => {
   // ---- paths ----
-  const distIndex = prodIndexHtml();                          // /opt/.../app.asar/dist/index.html
-  const distDir = distIndex ? path.dirname(distIndex) : ''; // /opt/.../app.asar/dist
-  const resFonts = path.join(process.resourcesPath, 'fonts'); // **REAL font location**
-  const resFontsSlash = resFonts.replace(/\\/g, '/');          // normalize for comparisons
+  const distIndex = prodIndexHtml();                            // /opt/.../app.asar/dist/index.html
+  const distDir = distIndex ? path.dirname(distIndex) : '';     // /opt/.../app.asar/dist
+  const resFonts = path.join(process.resourcesPath, 'fonts');   // **REAL font location**
+  const resFontsSlash = resFonts.replace(/\\/g, '/');           // normalize for comparisons
 
   // ===== Fonts: build lookup maps =====
   const FALLBACK_BASE = 'Hack-Regular';
@@ -233,7 +267,7 @@ app.whenReady().then(() => {
   );
 
   // ============================
-  // (B) SINGLE file:// hook (fonts FIRST, then salvage) ← key fix
+  // (B) SINGLE file:// hook (fonts FIRST, then salvage)
   // ============================
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['file://*/*'] },
@@ -287,17 +321,17 @@ app.whenReady().then(() => {
     }
   );
 
+  // Relax Permissions-Policy for signage use-cases (fullscreen / XR)
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const headers = details.responseHeaders || {};
 
-    // Remove any existing Permissions-Policy
+    // Remove any existing restrictive policy headers we don't want
     Object.keys(headers).forEach(k => {
       if (k.toLowerCase() === 'permissions-policy' || k.toLowerCase() === 'feature-policy') {
         delete headers[k];
       }
     });
 
-    // Inject a permissive policy for your app
     headers['Permissions-Policy'] = [
       'fullscreen=(self "*"), xr-spatial-tracking=(self "*")'
     ];
@@ -313,7 +347,7 @@ app.whenReady().then(() => {
       const buf = await fs.promises.readFile(file);
       return JSON.parse(buf.toString('utf-8'));
     } catch (e) {
-      console.error('[zcast] read-manifest error:', e);
+      try { console.error('[zcast] read-manifest error:', e); } catch {}
       return null;
     }
   });
