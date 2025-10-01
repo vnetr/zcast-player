@@ -22,12 +22,14 @@ let stageA!: HTMLDivElement;
 let stageB!: HTMLDivElement;
 let activeStage!: HTMLDivElement;
 let backStage!: HTMLDivElement;
-let playerA!: BaseRendererEl;
-let playerB!: BaseRendererEl;
-let activePlayer!: BaseRendererEl;
-let backPlayer!: BaseRendererEl;
-let activeKind: RendererKind = 'layout';
-let backKind: RendererKind = 'layout';
+
+// Lazily created renderer elements (can be null until first use)
+let playerA: BaseRendererEl | null = null;
+let playerB: BaseRendererEl | null = null;
+let activePlayer: BaseRendererEl | null = null;
+let backPlayer: BaseRendererEl | null = null;
+let activeKind: RendererKind | null = null;
+let backKind: RendererKind | null = null;
 
 // Track last successfully shown doc (by kind+id) to avoid redundant swaps
 let lastGood: { kind: RendererKind; id?: string | number } | null = null;
@@ -36,9 +38,7 @@ let lastGood: { kind: RendererKind; id?: string | number } | null = null;
 async function ensureStages() {
   if (stageA) return;
 
-  // Always load layout renderer; playlist is loaded on demand
-  await loadRenderer('layout');
-
+  // Create the layers; players are created lazily when we know the kind+document
   const stage = document.createElement('div');
   stage.className = 'stage';
   stage.innerHTML = `
@@ -51,21 +51,13 @@ async function ensureStages() {
   stageA = stage.querySelector('#layerA') as HTMLDivElement;
   stageB = stage.querySelector('#layerB') as HTMLDivElement;
 
-  // Start with <layout-renderer> on both layers
-  playerA = createRendererEl('layout');
-  playerB = createRendererEl('layout');
-
-  stageA.appendChild(playerA);
-  stageB.appendChild(playerB);
-
-  activeStage = stageA; backStage = stageB;
-  activePlayer = playerA; backPlayer = playerB;
-  activeKind = 'layout'; backKind = 'layout';
+  activeStage = stageA;
+  backStage = stageB;
 }
 
 // ---------- helpers: readiness & events ----------
 function waitLoaded(el: HTMLElement, kind: RendererKind, timeoutMs = 6000): Promise<void> {
-  // Playlist renderer .d.ts does not define a "loaded" event; skip event wait.
+  // Playlist renderer does not expose a "loaded" event; skip.
   if (kind === 'playlist') return Promise.resolve();
 
   const eventName = 'layoutLoaded';
@@ -79,11 +71,11 @@ function waitLoaded(el: HTMLElement, kind: RendererKind, timeoutMs = 6000): Prom
 }
 
 async function waitReady(el: BaseRendererEl, timeoutMs = 6000) {
-  // Try a quick play to initialize scene; ignore failures here.
   try { await el.play(); } catch {}
 
   const rafSettled = new Promise<void>((resolve) => {
-    let ticks = 0; const step = () => { if (++ticks >= 3) resolve(); else requestAnimationFrame(step); };
+    let ticks = 0;
+    const step = () => { if (++ticks >= 3) resolve(); else requestAnimationFrame(step); };
     requestAnimationFrame(step);
   });
 
@@ -93,21 +85,36 @@ async function waitReady(el: BaseRendererEl, timeoutMs = 6000) {
   ]);
 }
 
-// Ensure the **back** layer hosts the correct renderer kind
-async function ensureBackKind(kind: RendererKind) {
-  if (backKind === kind) return;
+// ---------- ensure the back layer has the right element, with doc set BEFORE append ----------
+async function ensureBackRenderer(kind: RendererKind, doc: any) {
+  // If the back element is missing or a different kind, replace it.
+  if (!backPlayer || backKind !== kind) {
+    await loadRenderer(kind);
 
-  // Load the web component (once per process)
-  await loadRenderer(kind);
+    // Remove old back element if present
+    if (backPlayer?.parentElement) {
+      try { backPlayer.pause?.(); } catch {}
+      try { backPlayer.stop?.(); } catch {}
+      backPlayer.parentElement.removeChild(backPlayer);
+    }
 
-  // Replace back element with correct tag
-  try { backPlayer?.pause?.(); } catch {}
-  try { backPlayer?.stop?.(); } catch {}
-  if (backPlayer && backPlayer.parentElement) backPlayer.parentElement.removeChild(backPlayer);
+    // Create, assign .document FIRST, then append → avoids null-first-render in Lit
+    const el = createRendererEl(kind);
+    (el as any).document = doc;
+    backStage.appendChild(el);
 
-  backPlayer = createRendererEl(kind);
-  backStage.appendChild(backPlayer);
-  backKind = kind;
+    backPlayer = el;
+    backKind = kind;
+
+    // Book-keep initial references
+    if (!playerA)      playerA = el;
+    else if (!playerB) playerB = el;
+
+    return;
+  }
+
+  // Same kind already mounted on back stage → just update the doc before it updates
+  (backPlayer as any).document = doc;
 }
 
 // ---------- resolve next scheduled doc ----------
@@ -132,18 +139,14 @@ function resolveNextFromEngineItem(item: any): { kind: RendererKind; doc: any; i
 
 // ---------- render off-screen (generic for both kinds) ----------
 async function prepareOffscreen(kind: RendererKind, doc: any) {
-  await ensureBackKind(kind);
-  try { await backPlayer.stop(); } catch {}
+  await ensureStages();
+  await ensureBackRenderer(kind, doc);
+  try { await backPlayer?.stop?.(); } catch {}
 
-  // Assign the document for the renderer (both accept .document)
-  (backPlayer as any).document = doc;
-
-  // For layout we listen for 'layoutLoaded'; for playlist we skip the event.
   await waitLoaded(backPlayer as unknown as HTMLElement, kind).catch(() => {});
-  try { await backPlayer.play(); } catch {}
+  try { await backPlayer?.play?.(); } catch {}
 
-  // Heuristic settle for both kinds (advances a few RAFs).
-  await waitReady(backPlayer).catch(() => {});
+  await waitReady(backPlayer!).catch(() => {});
 }
 
 // ---------- atomic swap ----------
@@ -152,16 +155,16 @@ async function swapLayers() {
   backStage.classList.remove('hidden');    backStage.classList.add('visible');
 
   // swap refs & kinds
-  [activeStage, backStage] = [backStage, activeStage];
+  [activeStage, backStage]   = [backStage, activeStage];
   [activePlayer, backPlayer] = [backPlayer, activePlayer];
-  [activeKind, backKind] = [backKind, activeKind];
+  [activeKind, backKind]     = [backKind as RendererKind, activeKind as RendererKind];
 
-  // Ensure the now-visible player is playing
-  try { await activePlayer.play(); } catch {}
-  requestAnimationFrame(async () => { try { await activePlayer.play(); } catch {} });
+  // Ensure the now-visible player is actually playing
+  try { await activePlayer?.play?.(); } catch {}
+  requestAnimationFrame(async () => { try { await activePlayer?.play?.(); } catch {} });
 
   // Quiet the hidden one
-  try { backPlayer.pause(); } catch {}
+  try { backPlayer?.pause?.(); } catch {}
 }
 
 // ---------- loop control ----------
