@@ -8,6 +8,16 @@ const MIN_SLOT_MS = 2_000;        // never switch faster than this
 const MAX_SLOT_MS = 5 * 60_000;   // protect against crazy timelines
 // ----------------------------
 
+// ---------- LOGGING MODE (runtime-tunable via localStorage) ----------
+type LogMode = 'off' | 'first' | 'changes' | 'verbose';
+const ENGINE_LOG_MODE: LogMode = (() => {
+  try {
+    const v = (typeof localStorage !== 'undefined' && localStorage.getItem('zcast.engine.log')) || '';
+    if (v === 'off' || v === 'first' || v === 'changes' || v === 'verbose') return v as LogMode;
+  } catch {}
+  return 'first'; // default: log only once after manifest is applied
+})();
+
 const ALL_DAYS = ['mo','tu','we','th','fr','sa','su'] as const;
 type ByDayCode = typeof ALL_DAYS[number];
 
@@ -37,7 +47,8 @@ type NewItem = {
   priority?: number;
   media?: any;          // layout OR playlist
   timeZone?: string;
-  name?: string;
+  name?: string;        // schedule name (often present)
+  scheduleName?: string;
   // pass-through fields ignored by the engine
 };
 
@@ -151,6 +162,22 @@ function playlistTimelineMs(playlist: any): number {
   return Math.max(total || DEFAULT_SLOT_MS, MIN_SLOT_MS);
 }
 
+function summarizeContent(doc: any): { contentName: string; items?: string[]; itemsMore?: number } {
+  if (!doc || typeof doc !== 'object') return { contentName: '' };
+  if (doc.type === 'playlist') {
+    const contentName = String(doc.name || doc.id || 'playlist');
+    const names = Array.isArray(doc.items)
+      ? doc.items.map((it: any) => String(it?.name || it?.originalDocument?.name || it?.id || '')).filter(Boolean)
+      : [];
+    const maxShow = 5;
+    const items = names.slice(0, maxShow);
+    const itemsMore = Math.max(0, names.length - items.length);
+    return { contentName, items, itemsMore };
+  }
+  // layout
+  return { contentName: String(doc.name || doc?.originalDocument?.name || doc.id || 'layout') };
+}
+
 // ---------- Public shape ----------
 export type ActivePick =
   | { kind: 'none'; nextCheck: number }
@@ -171,13 +198,14 @@ export function pickActiveContent(manifest: any, nowJS: Date = new Date()): Acti
 // ---------- Full engine (round-robin rotation) ----------
 type EvalItem = {
   idx: number;
-  name: string;
+  scheduleName: string;  // schedule “data.name”
+  contentName: string;   // media.name (layout/playlist)
   priority: number;
   tz: string;
-  layout: any;        // may be a layout OR a playlist doc
+  layout: any;           // may be a layout OR a playlist doc
   active: boolean;
   slotMs: number;
-  nextChangeMs: number;   // when this item's active state might change
+  nextChangeMs: number;  // when this item's active state might change
 };
 
 type Snapshot = {
@@ -194,12 +222,21 @@ export class ScheduleEngine {
   private lastKey: string | null = null;
   private rrIndex: number = 0;
 
+  // log de-duplication
+  private firstPlayLogged = false;
+  private lastPlaySig: string | null = null;
+  private lastNoActiveSig: string | null = null;
+
   updateManifest(manifest: any) {
     this.manifest = manifest;
     this.items = normalize(manifest);
     // reset rotation whenever manifest changes
     this.lastKey = null;
     this.rrIndex = 0;
+    // reset log gating too
+    this.firstPlayLogged = false;
+    this.lastPlaySig = null;
+    this.lastNoActiveSig = null;
   }
 
   snapshot(nowJS: Date = new Date()): Snapshot {
@@ -241,8 +278,6 @@ export class ScheduleEngine {
         next = todaysWindow(tomorrow, d.fromTime, d.toTime).start;
       }
       if (expire && expire.isValid && next > expire)      next = expire.plus({ millisecond: 1 });
-
-      // final guard: never schedule a boundary in the past
       if (next && next < now)                             next = now.plus({ milliseconds: 250 });
 
       const layout = d.media;
@@ -251,9 +286,13 @@ export class ScheduleEngine {
           ? playlistTimelineMs(d.media)
           : layoutTimelineMs(d.media);
 
+      const scheduleName = String(d.name || d.scheduleName || '');
+      const contentName  = String(layout?.name || layout?.originalDocument?.name || '');
+
       return {
         idx,
-        name: (d.name || layout?.name || '') as string,
+        scheduleName,
+        contentName,
         priority: Number(d.priority ?? 0),
         tz, layout,
         active,
@@ -268,12 +307,20 @@ export class ScheduleEngine {
     // Choose top priority among currently active
     const activeNow = evals.filter(e => e.active);
     if (activeNow.length === 0) {
-      // Return nothing, but still tell caller when to re-check
       const warn = [...evals].sort((a,b) => (b.priority - a.priority) || (a.nextChangeMs - b.nextChangeMs))[0];
-      if (warn) {
-        console.warn('[schedule] no active items; nextBoundary', new Date(nextBoundaryMs).toISOString(), 'top candidate:', {
-          idx: warn.idx, priority: warn.priority, nextChangeISO: new Date(warn.nextChangeMs).toISOString()
-        });
+      const sig = warn ? `${nextBoundaryMs}|${warn.idx}|${warn.priority}|${warn.nextChangeMs}` : `none|${nextBoundaryMs}`;
+      if (this.lastNoActiveSig !== sig) {
+        this.lastNoActiveSig = sig;
+        if (warn) {
+          console.warn('[schedule] no active items; nextBoundary',
+            new Date(nextBoundaryMs).toISOString(),
+            'top candidate:', {
+              idx: warn.idx, priority: warn.priority,
+              nextChangeISO: new Date(warn.nextChangeMs).toISOString()
+            });
+        } else {
+          console.warn('[schedule] no active items; nextBoundary', new Date(nextBoundaryMs).toISOString());
+        }
       }
       return { nowMs, nextBoundaryMs, topPriority: null, playlist: [], key: 'none' };
     }
@@ -282,14 +329,13 @@ export class ScheduleEngine {
     const topGroup = activeNow.filter(e => e.priority === topPriority);
 
     // Build a stable key for rotation continuity (priority + ids)
-    // Try media.id first; fallback to index
     const ids = topGroup.map(e => (e.layout?.id ?? `idx:${e.idx}`));
     const key = JSON.stringify({ p: topPriority, ids });
 
     // Stable deterministic order, then apply round-robin offset later
     topGroup.sort((a, b) => {
-      const an = (a.name || '').toLowerCase();
-      const bn = (b.name || '').toLowerCase();
+      const an = (a.scheduleName || a.contentName || '').toLowerCase();
+      const bn = (b.scheduleName || b.contentName || '').toLowerCase();
       if (an < bn) return -1;
       if (an > bn) return 1;
       return a.idx - b.idx;
@@ -310,6 +356,9 @@ export class ScheduleEngine {
       this.lastKey = snap.key;
       this.rrIndex = 0;
       console.info('[engine] new playlist:', snap.key);
+      // also reset play-log gate when the playlist composition itself changes
+      this.firstPlayLogged = false;
+      this.lastPlaySig = null;
     }
 
     const n = snap.playlist.length;
@@ -323,14 +372,41 @@ export class ScheduleEngine {
     // advance the rr index for the next call
     this.rrIndex = (this.rrIndex + 1) % n;
 
-    console.info('[engine] play:', {
-      idx: pick.idx,
-      name: pick.name,
-      priority: pick.priority,
-      slotMs: slot,
-      nextTickMs: tickMs,
-      boundaryISO: new Date(snap.nextBoundaryMs).toISOString()
-    });
+    // -------- gated logging --------
+    if (ENGINE_LOG_MODE !== 'off') {
+      const sig = `${snap.key}|${pick.layout?.id ?? ''}|${pick.idx}|${pick.priority}`;
+      let shouldLog = false;
+      if (ENGINE_LOG_MODE === 'verbose') {
+        shouldLog = true;
+      } else if (ENGINE_LOG_MODE === 'changes') {
+        shouldLog = this.lastPlaySig !== sig;
+      } else if (ENGINE_LOG_MODE === 'first') {
+        shouldLog = !this.firstPlayLogged;
+      }
+
+      if (shouldLog) {
+        const content = summarizeContent(pick.layout);
+        const payload: any = {
+          idx: pick.idx,
+          scheduleName: pick.scheduleName || undefined,
+          contentName: pick.contentName || content.contentName || undefined,
+          priority: pick.priority,
+          slotMs: slot,
+          nextTickMs: tickMs,
+          boundaryISO: new Date(snap.nextBoundaryMs).toISOString(),
+        };
+        if (pick.layout?.type === 'playlist' && content.items && content.items.length) {
+          payload.items = content.items;
+          if (content.itemsMore && content.itemsMore > 0) {
+            payload.itemsMore = content.itemsMore;
+          }
+        }
+        console.info('[engine] play:', payload);
+        this.lastPlaySig = sig;
+        this.firstPlayLogged = true;
+      }
+    }
+    // --------------------------------
 
     return { item: pick, tickMs, snap };
   }
