@@ -1,9 +1,11 @@
+// electron/main.ts
 import { app, BrowserWindow, ipcMain, session } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as url from 'url';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
+import chokidar from 'chokidar';
 
 // =======================
 // Safety: never die on EPIPE / logging
@@ -339,13 +341,66 @@ app.whenReady().then(() => {
     callback({ responseHeaders: headers });
   });
 
-  // ====== IPC + manifest watcher ======
+  // ====== IPC + robust manifest watcher (chokidar) ======
+  let lastManifestHash = '';
+  let lastManifestObject: any = null;
+
+  async function readManifestStable(file: string, attempts = 8, delayMs = 80) {
+    let lastErr: any;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const txt = await fs.promises.readFile(file, 'utf-8');
+        return JSON.parse(txt);
+      } catch (e) {
+        lastErr = e;
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+    }
+    throw lastErr;
+  }
+
+  async function broadcastManifest(file: string, why: string) {
+    try {
+      const txt = await fs.promises.readFile(file, 'utf-8');
+      const hash = sha256(txt);
+      if (hash === lastManifestHash) return; // no changes
+
+      const json = JSON.parse(txt);
+      lastManifestHash = hash;
+      lastManifestObject = json;
+
+      if (win) {
+        win.webContents.send('zcast:manifest-updated', json);
+        if (DEBUG) console.info('[zcast] manifest broadcast (', why, ')');
+      }
+    } catch (_) {
+      // If parse fails (partial write), retry shortly with a stable read.
+      setTimeout(async () => {
+        try {
+          const json = await readManifestStable(file);
+          const txt2 = JSON.stringify(json);
+          const hash2 = sha256(txt2);
+          if (hash2 !== lastManifestHash) {
+            lastManifestHash = hash2;
+            lastManifestObject = json;
+            win?.webContents.send('zcast:manifest-updated', json);
+            if (DEBUG) console.info('[zcast] manifest broadcast (retry ', why, ')');
+          }
+        } catch { /* swallow; next FS event will re-trigger */ }
+      }, 150);
+    }
+  }
+
   ipcMain.handle('zcast:read-manifest', async () => {
     const file = manifestFilePath();
     if (!file) return null;
     try {
-      const buf = await fs.promises.readFile(file);
-      return JSON.parse(buf.toString('utf-8'));
+      // Prefer last good in memory; else read fresh
+      if (lastManifestObject) return lastManifestObject;
+      const json = await readManifestStable(file);
+      lastManifestObject = json;
+      lastManifestHash = sha256(JSON.stringify(json));
+      return json;
     } catch (e) {
       try { console.error('[zcast] read-manifest error:', e); } catch {}
       return null;
@@ -354,31 +409,57 @@ app.whenReady().then(() => {
 
   function startWatch() {
     const file = manifestFilePath();
-    if (!file) return;
-    let timer: NodeJS.Timeout | null = null;
-    const bump = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(async () => {
-        if (!win) return;
-        try {
-          const buf = await fs.promises.readFile(file);
-          const json = JSON.parse(buf.toString('utf-8'));
-          win.webContents.send('zcast:manifest-updated', json);
-        } catch { /* transient write */ }
-      }, 100);
-    };
-    try {
-      fs.watch(file, { persistent: true }, (event) => {
-        if (event === 'rename' || event === 'change') bump();
-      });
-      console.info('[zcast] Watching manifest:', file);
-    } catch (e) {
-      console.warn('[zcast] fs.watch failed:', e);
+    if (!file) {
+      console.warn('[zcast] No manifest file provided; watcher not started.');
+      return;
     }
+
+    // Prime cache on boot
+    (async () => {
+      try {
+        const json = await readManifestStable(file);
+        lastManifestObject = json;
+        lastManifestHash = sha256(JSON.stringify(json));
+      } catch (e) {
+        console.warn('[zcast] initial manifest read failed (will retry on change):', e);
+      }
+    })();
+
+    const watcher = chokidar.watch(file, {
+      persistent: true,
+      ignoreInitial: false, // fire 'add' on startup if exists
+      awaitWriteFinish: {
+        stabilityThreshold: 250,
+        pollInterval: 50,
+      },
+      disableGlobbing: true,
+      depth: 0,
+      atomic: 100,
+    });
+
+    watcher
+      .on('add',    () => broadcastManifest(file, 'add'))
+      .on('change', () => broadcastManifest(file, 'change'))
+      .on('unlink', () => {
+        lastManifestHash = '';
+        lastManifestObject = null;
+        if (DEBUG) console.warn('[zcast] manifest file unlinked; waiting for re-create…');
+      })
+      .on('error',  (err) => console.warn('[zcast] chokidar watcher error:', err));
+
+    console.info('[zcast] Watching manifest (chokidar):', file);
   }
 
   createWindow();
   startWatch();
+
+  // If the renderer missed an event during boot, sync once after load.
+  const sendOnReady = () => {
+    if (win && lastManifestObject) {
+      win.webContents.send('zcast:manifest-updated', lastManifestObject);
+    }
+  };
+  win?.webContents.on('did-finish-load', sendOnReady);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
