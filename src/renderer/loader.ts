@@ -1,10 +1,11 @@
-// src/renderer/loader.ts
 import type { RendererKind, BaseRendererEl } from '../types/renderers';
 
 const PATCH_DECORATOR = /e\("design:type",\s*[A-Za-z_$][\w$]*\)/g;
-// Remove the noisy "[ERROR] No document found for layout renderer." call
-const PATCH_LAYOUT_NO_DOC_LOG =
-  /console\.error\(\s*"\[ERROR\]\s*No document found for layout renderer\."\s*\),?/g;
+
+// IMPORTANT: Only replace the call itself, NOT the following comma.
+// This keeps patterns like `return console.error(...),W`...`` valid → `return 0,W`...``.
+const PATCH_LAYOUT_NO_DOC_CALL =
+  /console\.error\(\s*"\[ERROR\]\s*No document found for layout renderer\."\s*\)/g;
 
 // Track whether a renderer kind has been loaded
 const loaded: Record<RendererKind, boolean> = { layout: false, playlist: false };
@@ -37,8 +38,7 @@ function patchDefineIdempotent(): () => void {
     ctor: CustomElementConstructor,
     options?: ElementDefinitionOptions
   ) => {
-    // If already defined, silently ignore instead of throwing
-    if (customElements.get(name)) return;
+    if (customElements.get(name)) return; // already defined → ignore
     return orig(name, ctor, options);
   };
   return () => {
@@ -49,7 +49,7 @@ function patchDefineIdempotent(): () => void {
 /**
  * After the playlist bundle loads, monkey-patch <layout-item-renderer>
  * so it sets `layoutDocument` BEFORE first render. That prevents the child
- * <layout-renderer> from connecting without a `.document`.
+ * <layout-renderer> from ever connecting without a `.document`.
  */
 async function postImportPatch(kind: RendererKind) {
   if (kind !== 'playlist') return;
@@ -65,27 +65,19 @@ async function postImportPatch(kind: RendererKind) {
     const origRender = proto.render;
     proto.render = function patchedRender(...args: any[]) {
       try {
-        // If the upstream code hasn’t populated it yet, do it now.
-        // For "layout-document" items this comes from .originalDocument.
-        if (
-          !this.layoutDocument &&
-          this.document &&
-          typeof this.document === 'object'
-        ) {
+        if (!this.layoutDocument && this.document && typeof this.document === 'object') {
           if (
             this.document.type === 'layout-document' &&
             this.document.originalDocument
           ) {
             this.layoutDocument = this.document.originalDocument;
           }
-          // For "media-asset" the upstream subclass (asset-item-renderer)
-          // builds a layout on its own; no manual action here.
+          // "media-asset" is handled by asset-item-renderer upstream.
         }
       } catch {}
       return origRender.apply(this, args);
     };
 
-    // Mark as patched
     proto.__zcastPatched = true;
     console.info('[loader] Patched <layout-item-renderer> to hydrate layoutDocument early.');
   } catch (e) {
@@ -95,18 +87,14 @@ async function postImportPatch(kind: RendererKind) {
 
 async function importVendor(kind: RendererKind) {
   if (import.meta.env.DEV) {
-    // In dev, module system caches by specifier; still wrap define for safety.
+    // In dev, import directly from node_modules; still guard define()
     const unpatch = patchDefineIdempotent();
     try {
-      if (kind === 'layout') {
-        await import('@zignage/layout-renderer');
-      } else {
-        await import('@zignage/playlist-renderer');
-      }
+      if (kind === 'layout') await import('@zignage/layout-renderer');
+      else await import('@zignage/playlist-renderer');
     } finally {
       unpatch();
     }
-    // Apply runtime patch (if playlist)
     await postImportPatch(kind);
     return;
   }
@@ -118,15 +106,15 @@ async function importVendor(kind: RendererKind) {
 
   let src = await resp.text();
 
-  // 1) Relax TS decorator reflection shape (kept from your original patch)
+  // 1) Relax TS decorator metadata shape
   src = src.replace(PATCH_DECORATOR, 'e("design:type", Object)');
 
-  // 2) Silence the specific "No document found" console.error inside layout bundle
+  // 2) Make the "no document" error silent *without* breaking comma operator chains
   if (kind === 'layout') {
-    src = src.replace(PATCH_LAYOUT_NO_DOC_LOG, '');
+    src = src.replace(PATCH_LAYOUT_NO_DOC_CALL, '0');
   }
 
-  // Wrap define to avoid duplicate 'base-renderer' / friends re-definitions
+  // Avoid duplicate custom element registrations
   const unpatch = patchDefineIdempotent();
   try {
     const blob = new Blob([src], { type: 'text/javascript' });
@@ -140,12 +128,10 @@ async function importVendor(kind: RendererKind) {
     unpatch();
   }
 
-  // Apply runtime patch (if playlist)
   await postImportPatch(kind);
 }
 
 export async function loadRenderer(kind: RendererKind) {
-  // If the tag is already registered, mark loaded and return
   const tag = kind === 'layout' ? 'layout-renderer' : 'playlist-renderer';
   if (customElements.get(tag)) {
     loaded[kind] = true;
@@ -153,13 +139,11 @@ export async function loadRenderer(kind: RendererKind) {
   }
   if (loaded[kind]) return;
 
-  // If a load is already in flight, await it
   if (loading[kind]) {
     await loading[kind]!;
     return;
   }
 
-  // Otherwise, start a single load
   loading[kind] = (async () => {
     await importVendor(kind);
     loaded[kind] = true;
