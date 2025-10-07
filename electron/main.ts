@@ -44,7 +44,17 @@ const __dirname = path.dirname(__filename);
 
 const toFileUrl = (p: string) => url.pathToFileURL(p).href;
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
-const DEBUG = /^(1|true|yes)$/i.test(String(process.env.ZCAST_DEBUG_ASSETS || ''));
+
+// Debug toggles
+const DEBUG_ALL     = /^(1|true|yes)$/i.test(String(process.env.ZCAST_DEBUG || ''));
+const DEBUG_ASSETS  = DEBUG_ALL || /^(1|true|yes)$/i.test(String(process.env.ZCAST_DEBUG_ASSETS || ''));
+const DEBUG_MAN     = DEBUG_ALL || /^(1|true|yes)$/i.test(String(process.env.ZCAST_DEBUG_MANIFEST || ''));
+
+// Manifest read/watch tuning
+const READ_BUDGET_MS   = Number(process.env.ZCAST_MANIFEST_READ_BUDGET_MS ?? 2500);
+const QUIET_MS         = Number(process.env.ZCAST_MANIFEST_QUIET_MS ?? 120);
+const WATCH_USE_POLL   = /^(1|true|yes)$/i.test(String(process.env.ZCAST_MANIFEST_WATCH_POLL || ''));
+const WATCH_INTERVAL   = Number(process.env.ZCAST_MANIFEST_WATCH_INTERVAL ?? 500);
 
 // -------- GPU / HW accel --------
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
@@ -91,7 +101,7 @@ function createWindow() {
       webgl: true,
       backgroundThrottling: false,
 
-      // Signage-friendly security posture (you already rely on these)
+      // Signage-friendly security posture
       webSecurity: false,               // allow scheme changes
       allowRunningInsecureContent: true // http assets alongside file://
     },
@@ -134,7 +144,7 @@ app.whenReady().then(() => {
       fontNormMap[normalize(fn)] = fn;
     }
     resFontsExists = true;
-    if (DEBUG) console.log('[fonts] indexed', Object.keys(fontCaseMap).length, 'files in', resFonts);
+    if (DEBUG_ASSETS) console.log('[fonts] indexed', Object.keys(fontCaseMap).length, 'files in', resFonts);
   } catch (e) {
     console.warn('[fonts] cannot index resources/fonts:', e);
   }
@@ -191,7 +201,7 @@ app.whenReady().then(() => {
     const ext = (base.split('.').pop() || '').toLowerCase();
     const fb = pickFallback(ext);
     if (fb) {
-      if (DEBUG) console.log('[fonts] fallback', base, '->', path.basename(fb));
+      if (DEBUG_ASSETS) console.log('[fonts] fallback', base, '->', path.basename(fb));
       return fb;
     }
     return null;
@@ -217,10 +227,10 @@ app.whenReady().then(() => {
     try {
       const txt = fs.readFileSync(INDEX_PATH, 'utf-8');
       assetIndex = JSON.parse(txt);
-      if (DEBUG) console.log('[assets] index loaded:', assetIndex?.items?.length ?? 0, 'entries');
+      if (DEBUG_ASSETS) console.log('[assets] index loaded:', assetIndex?.items?.length ?? 0, 'entries');
     } catch {
       assetIndex = null;
-      if (DEBUG) console.log('[assets] no readable assets-index.json (url-hash aliases only)');
+      if (DEBUG_ASSETS) console.log('[assets] no readable assets-index.json (url-hash aliases only)');
     }
   }
   loadAssetIndex();
@@ -294,23 +304,21 @@ app.whenReady().then(() => {
           const target = resolveFontPath(reqName);
           if (target && fs.existsSync(target)) {
             const redirectURL = toFileUrl(target);
-            if (DEBUG) console.log('[font hook] redirect', pSlash, '->', redirectURL);
+            if (DEBUG_ASSETS) console.log('[font hook] redirect', pSlash, '->', redirectURL);
             return callback({ redirectURL });
           }
-          // no match → fall through (may 404, but we do our best above)
           return callback({});
         }
 
         // --- 2) SALVAGE: file://<host>/... → try local cache or http
-        // Only for "file://<hostname>/..." shapes; normal "file:///..." has no hostname
         if (u.hostname && u.hostname !== 'localhost') {
           const httpGuess = `http://${u.hostname}${decodeURIComponent(u.pathname)}${u.search || ''}`;
           const local = mapRemoteToLocal(httpGuess);
           if (local) {
-            if (DEBUG) console.log('[assets] salvage file://host -> local', details.url, '->', local);
+            if (DEBUG_ASSETS) console.log('[assets] salvage file://host -> local', details.url, '->', local);
             return callback({ redirectURL: toFileUrl(local) });
           }
-          if (DEBUG) console.log('[assets] salvage file://host -> http', details.url, '->', httpGuess);
+          if (DEBUG_ASSETS) console.log('[assets] salvage file://host -> http', details.url, '->', httpGuess);
           return callback({ redirectURL: httpGuess });
         }
 
@@ -341,70 +349,94 @@ app.whenReady().then(() => {
     callback({ responseHeaders: headers });
   });
 
-  // ====== IPC + robust manifest watcher (chokidar) ======
-  let lastManifestHash = '';
+  // ====== IPC + robust manifest watcher (stable reads + hash coalescing) ======
+  let lastManifestHash: string = '';
   let lastManifestObject: any = null;
 
-  async function readManifestStable(file: string, attempts = 8, delayMs = 80) {
-    let lastErr: any;
-    for (let i = 0; i < attempts; i++) {
+  const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+  /**
+   * Read JSON only when the manifest looks stable:
+   *  - size & mtime unchanged across QUIET_MS
+   *  - text ends well and parses
+   * Returns parsed object or `null` if couldn't get a stable read inside READ_BUDGET_MS.
+   */
+  async function readManifestStable(file: string): Promise<any | null> {
+    const deadline = Date.now() + READ_BUDGET_MS;
+    let lastErr: any = null;
+
+    while (Date.now() < deadline) {
       try {
-        const txt = await fs.promises.readFile(file, 'utf-8');
-        return JSON.parse(txt);
+        const s1 = await fs.promises.stat(file);
+        const buf = await fs.promises.readFile(file); // single read
+        await sleep(QUIET_MS);                        // quiet window
+        const s2 = await fs.promises.stat(file);
+
+        if (s2.size !== s1.size || s2.mtimeMs !== s1.mtimeMs) {
+          // still being written; retry
+          continue;
+        }
+
+        // sanitize & quick tail check
+        let txt = buf.toString('utf-8');
+        if (txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1); // strip BOM
+        txt = txt.replace(/\u0000/g, '');
+        const tr = txt.trim();
+        if (!tr || !/[}\]]$/.test(tr)) {
+          lastErr = new Error('truncated-json-tail');
+          continue;
+        }
+
+        return JSON.parse(tr);
       } catch (e) {
         lastErr = e;
-        await new Promise(r => setTimeout(r, delayMs));
+        await sleep(80);
       }
     }
-    throw lastErr;
+
+    if (DEBUG_MAN) console.warn('[zcast] readManifestStable: timeout (returning null):', String(lastErr?.message || lastErr));
+    return null;
   }
 
-  async function broadcastManifest(file: string, why: string) {
+  function computeHash(obj: any): string {
+    try { return sha256(JSON.stringify(obj)); } catch { return ''; }
+  }
+
+  function sendToRenderer(json: any, why: string) {
+    if (!win) return;
     try {
-      const txt = await fs.promises.readFile(file, 'utf-8');
-      const hash = sha256(txt);
-      if (hash === lastManifestHash) return; // no changes
+      win.webContents.send('zcast:manifest-updated', json);
+      if (DEBUG_MAN) console.info(`[zcast] manifest broadcast (${why})`);
+    } catch (e) {
+      console.warn('[zcast] failed to send manifest to renderer:', e);
+    }
+  }
 
-      const json = JSON.parse(txt);
-      lastManifestHash = hash;
+  async function maybeBroadcastFromDisk(file: string, why: string) {
+    const json = await readManifestStable(file);
+    if (json === null) return; // not ready yet
+    const h = computeHash(json);
+    if (h && h !== lastManifestHash) {
+      lastManifestHash = h;
       lastManifestObject = json;
-
-      if (win) {
-        win.webContents.send('zcast:manifest-updated', json);
-        if (DEBUG) console.info('[zcast] manifest broadcast (', why, ')');
-      }
-    } catch (_) {
-      // If parse fails (partial write), retry shortly with a stable read.
-      setTimeout(async () => {
-        try {
-          const json = await readManifestStable(file);
-          const txt2 = JSON.stringify(json);
-          const hash2 = sha256(txt2);
-          if (hash2 !== lastManifestHash) {
-            lastManifestHash = hash2;
-            lastManifestObject = json;
-            win?.webContents.send('zcast:manifest-updated', json);
-            if (DEBUG) console.info('[zcast] manifest broadcast (retry ', why, ')');
-          }
-        } catch { /* swallow; next FS event will re-trigger */ }
-      }, 150);
+      sendToRenderer(json, why);
+    } else if (DEBUG_MAN) {
+      console.log('[zcast] manifest changed on disk but content hash identical; skipping broadcast.');
     }
   }
 
   ipcMain.handle('zcast:read-manifest', async () => {
     const file = manifestFilePath();
     if (!file) return null;
-    try {
-      // Prefer last good in memory; else read fresh
-      if (lastManifestObject) return lastManifestObject;
-      const json = await readManifestStable(file);
+    // Serve last good quickly; otherwise try a stable read (quietly returns null if not ready)
+    if (lastManifestObject) return lastManifestObject;
+    const json = await readManifestStable(file);
+    if (json) {
       lastManifestObject = json;
-      lastManifestHash = sha256(JSON.stringify(json));
+      lastManifestHash = computeHash(json);
       return json;
-    } catch (e) {
-      try { console.error('[zcast] read-manifest error:', e); } catch {}
-      return null;
     }
+    return null;
   });
 
   function startWatch() {
@@ -414,40 +446,44 @@ app.whenReady().then(() => {
       return;
     }
 
-    // Prime cache on boot
+    // Prime cache on boot (quiet; no spam)
     (async () => {
-      try {
-        const json = await readManifestStable(file);
+      const json = await readManifestStable(file);
+      if (json) {
         lastManifestObject = json;
-        lastManifestHash = sha256(JSON.stringify(json));
-      } catch (e) {
-        console.warn('[zcast] initial manifest read failed (will retry on change):', e);
+        lastManifestHash = computeHash(json);
+        if (DEBUG_MAN) console.log('[zcast] initial manifest loaded');
+      } else if (DEBUG_MAN) {
+        console.log('[zcast] initial manifest not ready; waiting for change…');
       }
     })();
 
     const watcher = chokidar.watch(file, {
       persistent: true,
-      ignoreInitial: false, // fire 'add' on startup if exists
+      ignoreInitial: false,  // 'add' fires on startup if file exists
       awaitWriteFinish: {
-        stabilityThreshold: 250,
+        stabilityThreshold: Math.max(QUIET_MS, 120),
         pollInterval: 50,
       },
       disableGlobbing: true,
       depth: 0,
       atomic: 100,
+      usePolling: WATCH_USE_POLL,
+      interval: WATCH_INTERVAL,
+      binaryInterval: WATCH_INTERVAL,
     });
 
     watcher
-      .on('add',    () => broadcastManifest(file, 'add'))
-      .on('change', () => broadcastManifest(file, 'change'))
+      .on('add',    () => { if (DEBUG_MAN) console.log('[zcast] manifest add');    maybeBroadcastFromDisk(file, 'add'); })
+      .on('change', () => { if (DEBUG_MAN) console.log('[zcast] manifest change'); maybeBroadcastFromDisk(file, 'change'); })
       .on('unlink', () => {
         lastManifestHash = '';
         lastManifestObject = null;
-        if (DEBUG) console.warn('[zcast] manifest file unlinked; waiting for re-create…');
+        if (DEBUG_MAN) console.warn('[zcast] manifest file unlinked; waiting for re-create…');
       })
       .on('error',  (err) => console.warn('[zcast] chokidar watcher error:', err));
 
-    console.info('[zcast] Watching manifest (chokidar):', file);
+    console.info('[zcast] Watching manifest (chokidar):', file, WATCH_USE_POLL ? '(polling)' : '');
   }
 
   createWindow();
@@ -456,7 +492,7 @@ app.whenReady().then(() => {
   // If the renderer missed an event during boot, sync once after load.
   const sendOnReady = () => {
     if (win && lastManifestObject) {
-      win.webContents.send('zcast:manifest-updated', lastManifestObject);
+      sendToRenderer(lastManifestObject, 'renderer-ready');
     }
   };
   win?.webContents.on('did-finish-load', sendOnReady);
