@@ -5,7 +5,7 @@
   "type": "module",
   "main": "build/electron/main.js",
   "scripts": {
-    "prebuild:vendor": "mkdir -p public/vendor && cp node_modules/@zignage/layout-renderer/index.js public/vendor/layout-renderer.js",
+    "prebuild:vendor": "mkdir -p public/vendor && cp node_modules/@zignage/layout-renderer/index.js public/vendor/layout-renderer.js && cp node_modules/@zignage/playlist-renderer/index.js public/vendor/playlist-renderer.js",
     "build:app": "npm run prebuild:vendor && vite build",
     "build:electron": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json",
     "build": "rimraf build && npm run build:app && npm run build:electron",
