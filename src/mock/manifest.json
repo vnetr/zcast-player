@@ -1,187 +1,372 @@
-{
-  "name": "New Schedule - Hello World",
-  "type": "layout",
-  "group": "Default Group",
-  "player": "default",
-  "recipe": {
-    "events": [
-      {
-        "start": "2025-09-03T19:31:25.565Z",
-        "duration": "forever",
-        "playlist": {
-          "media_templates": [
-            {
-              "params": {
-                "id": "9cce2e64-f89b-4ba0-8c3b-c7f64e4deea9",
-                "name": "Hello World",
-                "type": "layout",
-                "props": {
-                  "width": 1920,
-                  "height": 1080,
-                  "background": "#000000"
-                },
-                "status": "ffffffff-ffff-ffff-ffff-fffffffffffe",
-                "options": {
-                  "end": 0,
-                  "start": 0,
-                  "locked": false,
-                  "visible": true,
-                  "duration": 0,
-                  "selected": false
-                },
-                "version": 1,
-                "children": [
-                  {
-                    "id": "67648a68-291e-4f5e-9f7d-0c1b03d0e80f",
-                    "name": "Text",
-                    "type": "text",
-                    "props": {
-                      "x": 249,
-                      "y": 307,
-                      "clip": {
-                        "top": 0,
-                        "left": 0,
-                        "right": 0,
-                        "bottom": 0
-                      },
-                      "width": 1347,
-                      "border": {
-                        "radius": 0,
-                        "lineColor": "transparent",
-                        "lineStyle": "solid",
-                        "lineWidth": 0
-                      },
-                      "height": 553,
-                      "filters": {},
-                      "opacity": 1,
-                      "transform": {
-                        "skew": {
-                          "x": 0,
-                          "y": 0
-                        },
-                        "scale": {
-                          "x": 100,
-                          "y": 100
-                        },
-                        "rotate": 0
-                      },
-                      "background": "transparent"
-                    },
-                    "content": {
-                      "mode": "static",
-                      "options": {
-                        "color": "#ffffff",
-                        "shadow": {
-                          "hidden": true,
-                          "options": {
-                            "blur": 10,
-                            "angle": 45,
-                            "color": "#000000",
-                            "offset": 10,
-                            "opacity": 100
-                          }
-                        },
-                        "opacity": 1,
-                        "padding": {
-                          "top": 0,
-                          "left": 0,
-                          "right": 0,
-                          "bottom": 0
-                        },
-                        "animation": "none",
-                        "typography": {
-                          "fontSize": 200,
-                          "fontStyle": "normal",
-                          "textAlign": "left",
-                          "fontFamily": "Arial",
-                          "fontWeight": "normal",
-                          "lineHeight": "normal",
-                          "letterSpacing": 0,
-                          "textTransform": "none",
-                          "verticalAlign": "top",
-                          "textDecoration": "none"
-                        },
-                        "animationIn": "none",
-                        "animationOut": "none"
-                      },
-                      "text-options-static": {
-                        "text": "<p>Hello, World!</p>"
-                      },
-                      "text-options-dynamic": {
-                        "fallback": "Hello, World!",
-                        "data-source": {
-                          "port": "80",
-                          "route": "",
-                          "domain": "",
-                          "value-path": "",
-                          "refresh-rate": "60"
-                        }
-                      }
-                    },
-                    "options": {
-                      "end": 1000,
-                      "start": 0,
-                      "locked": false,
-                      "visible": true,
-                      "selected": false
-                    }
-                  }
-                ],
-                "editorData": {
-                  "currentTimestamp": 0
-                }
-              },
-              "asset_id": "9cce2e64-f89b-4ba0-8c3b-c7f64e4deea9",
-              "duration_seconds": 86400
-            }
-          ]
+[
+  {
+    "doc_uuid": "762af9f2-8714-4d8f-8514-9f4ce64fd7e9",
+    "schedule_group": null,
+    "data": {
+      "days": [],
+      "name": "New Schedule - Test05",
+      "type": "layout",
+      "group": "Default Group",
+      "media": {
+        "id": "faff2520-c88b-43b3-b630-0548ee826b1c",
+        "name": "Test05",
+        "tags": [],
+        "type": "layout",
+        "props": { "width": 1024, "height": 1440, "background": "#000000" },
+        "status": "ffffffff-ffff-ffff-ffff-fffffffffffe",
+        "options": {
+          "end": 31111,
+          "start": 0,
+          "locked": false,
+          "visible": true,
+          "duration": 31111,
+          "selected": false
         },
-        "priority": 2,
-        "timeZone": "America/New_York",
-        "recurrenceRules": [
+        "parents": ["13290f45-9fb5-4c37-b6c0-55e22a625d5f"],
+        "version": 1,
+        "children": [
           {
-            "byDay": [
-              {
-                "day": "mo",
-                "nthOfPeriod": 1
+            "id": "595f60d0-5d0c-41a4-bf01-2ad203a600fb",
+            "name": "CMS Promotional.mp4",
+            "open": false,
+            "type": "video",
+            "props": {
+              "x": -120,
+              "y": 0,
+              "clip": { "top": 0, "left": 0, "right": 0, "bottom": 0 },
+              "width": 1152,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
               },
-              {
-                "day": "tu",
-                "nthOfPeriod": 1
+              "height": 1440,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": { "x": 0, "y": 0 },
+                "scale": { "x": 100, "y": 100 },
+                "rotate": 0
               },
-              {
-                "day": "we",
-                "nthOfPeriod": 1
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://kraken.zignage.com/media/mediaAsset/originals/CMS_Promotional.mp4",
+              "mark-in": 0,
+              "mark-out": 0,
+              "playback-mode": "loop"
+            },
+            "options": {
+              "end": 31111,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "1d718d93-6d5b-429d-9654-72285fa0516a",
+            "name": "spine.svg",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": [
+                { "value": 0, "easing": "linear", "timestamp": 0 },
+                { "value": 0, "easing": "linear", "timestamp": 1500 },
+                { "value": -214, "easing": "linear", "timestamp": 2000 },
+                { "value": -214, "easing": "linear", "timestamp": 30611 },
+                { "value": 0, "easing": "linear", "timestamp": 31111 }
+              ],
+              "y": 0,
+              "clip": { "top": 0, "left": 0, "right": 0, "bottom": 0 },
+              "width": 214,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
               },
-              {
-                "day": "th",
-                "nthOfPeriod": 1
+              "height": 1440,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": { "x": 0, "y": 0 },
+                "scale": { "x": 100, "y": 100 },
+                "rotate": 0
               },
-              {
-                "day": "fr",
-                "nthOfPeriod": 1
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://kraken.zignage.com/media/mediaAsset/originals/spine.svg",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 31111,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "9be22776-23e0-40db-8ea4-34da2dbcb28c",
+            "name": "CMS_Logo_1Lline.svg",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": -190,
+              "y": 290,
+              "clip": { "top": 0, "left": 0, "right": 0, "bottom": 0 },
+              "width": 576,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
               },
-              {
-                "day": "sa",
-                "nthOfPeriod": 1
+              "height": 104,
+              "filters": {},
+              "opacity": [
+                { "value": 1, "easing": "linear", "timestamp": 0 },
+                { "value": 1, "easing": "linear", "timestamp": 500 },
+                { "value": 0, "easing": "linear", "timestamp": 1000 },
+                { "value": 0, "easing": "linear", "timestamp": 29911 },
+                { "value": 1, "easing": "linear", "timestamp": 30611 },
+                { "value": 1, "easing": "linear", "timestamp": 31111 }
+              ],
+              "transform": {
+                "skew": { "x": 0, "y": 0 },
+                "scale": { "x": 100, "y": 100 },
+                "rotate": 90
               },
-              {
-                "day": "su",
-                "nthOfPeriod": 1
-              }
-            ],
-            "until": "2026-09-05T03:59:59.999Z",
-            "frequency": "daily"
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://kraken.zignage.com/media/mediaAsset/originals/CMS_Logo_1Lline.svg",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 31111,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "80e3c4ba-a830-443f-97d7-41222558e8f3",
+            "name": "1200px-QR_Code_Example.svg.png",
+            "type": "image",
+            "props": {
+              "x": 863.890380859375,
+              "y": 839.7342681884766,
+              "clip": { "top": 0, "left": 0, "right": 0, "bottom": 0 },
+              "width": 160,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 160,
+              "filters": {},
+              "opacity": [
+                { "value": 0, "easing": "linear", "timestamp": 0 },
+                { "value": 0, "easing": "linear", "timestamp": 5600 },
+                { "value": 1, "easing": "linear", "timestamp": 6100 },
+                { "value": 1, "easing": "linear", "timestamp": 30611 },
+                { "value": 0, "easing": "linear", "timestamp": 31111 }
+              ],
+              "transform": {
+                "skew": { "x": 0, "y": 0 },
+                "scale": { "x": 100, "y": 100 },
+                "rotate": 0
+              },
+              "background": "#ffffff"
+            },
+            "content": {
+              "src": "http://kraken.zignage.com/media/mediaAsset/originals/1200px-QR_Code_Example.svg.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 31111,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
           }
-        ]
-      }
-    ]
+        ],
+        "editorData": { "currentTimestamp": 20400 },
+        "isNestedLayout": true
+      },
+      "canvas": {
+        "id": "b6556ff1-5ecd-4e7e-a2eb-46554b17b242",
+        "name": "Test",
+        "location": { "x": 100, "y": 0, "width": 1920, "height": 1080 },
+        "frameRate": 24,
+        "resolution": "5200x2160",
+        "aspectRatio": "65:27"
+      },
+      "player": "default",
+      "status": "ffffffff-ffff-ffff-ffff-fffffffffffe",
+      "toTime": "23:59:59.000",
+      "weekend": false,
+      "canvasId": "b6556ff1-5ecd-4e7e-a2eb-46554b17b242",
+      "deviceId": "45f254bf-8aaf-484d-ac96-b86ea9bb6f43",
+      "expireAt": "2025-11-10T13:30:00.000Z",
+      "fromTime": "00:00:00.000",
+      "inceptAt": "2025-11-04T00:00:40.169Z",
+      "layoutId": "faff2520-c88b-43b3-b630-0548ee826b1c",
+      "priority": 2,
+      "inceptNow": true,
+      "expireNever": true,
+      "workingDays": false,
+      "scheduleName": "New Schedule - Test05"
+    },
+    "created": "2025-11-04T17:09:45.468178+00:00",
+    "modified": "2025-11-04T17:09:49.272166+00:00"
   },
-  "status": "7372754d-6de7-452b-a882-e49ca7afe7fd",
-  "canvasId": "b6556ff1-5ecd-4e7e-a2eb-46554b17b242",
-  "deviceId": "45f254bf-8aaf-484d-ac96-b86ea9bb6f43",
-  "layoutId": "9cce2e64-f89b-4ba0-8c3b-c7f64e4deea9",
-  "inceptNow": true,
-  "expireNever": true,
-  "scheduleName": "New Schedule - Hello World"
-}
+  {
+    "doc_uuid": "95f40d9e-b69d-4123-b69f-843d81d1fa4e",
+    "schedule_group": null,
+    "data": {
+      "days": [
+        { "day": "mo", "nthOfPeriod": 1 },
+        { "day": "tu", "nthOfPeriod": 1 },
+        { "day": "we", "nthOfPeriod": 1 },
+        { "day": "th", "nthOfPeriod": 1 },
+        { "day": "fr", "nthOfPeriod": 1 },
+        { "day": "sa", "nthOfPeriod": 1 },
+        { "day": "su", "nthOfPeriod": 1 }
+      ],
+      "name": "New Schedule - Hello World",
+      "type": "layout",
+      "group": "Default Group",
+      "media": {
+        "id": "9cce2e64-f89b-4ba0-8c3b-c7f64e4deea9",
+        "name": "Hello World",
+        "tags": [],
+        "type": "layout",
+        "props": { "width": 1920, "height": 1080, "background": "#000000" },
+        "status": "ffffffff-ffff-ffff-ffff-fffffffffffe",
+        "options": {
+          "end": 0,
+          "start": 0,
+          "locked": false,
+          "visible": true,
+          "duration": 0,
+          "selected": false
+        },
+        "version": 1,
+        "children": [
+          {
+            "id": "67648a68-291e-4f5e-9f7d-0c1b03d0e80f",
+            "name": "Text",
+            "type": "text",
+            "props": {
+              "x": 249,
+              "y": 307,
+              "clip": { "top": 0, "left": 0, "right": 0, "bottom": 0 },
+              "width": 1347,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 553,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": { "x": 0, "y": 0 },
+                "scale": { "x": 100, "y": 100 },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "mode": "static",
+              "options": {
+                "color": "#ffffff",
+                "shadow": {
+                  "hidden": true,
+                  "options": {
+                    "blur": 10,
+                    "angle": 45,
+                    "color": "#000000",
+                    "offset": 10,
+                    "opacity": 100
+                  }
+                },
+                "opacity": 1,
+                "padding": { "top": 0, "left": 0, "right": 0, "bottom": 0 },
+                "animation": "none",
+                "typography": {
+                  "fontSize": 200,
+                  "fontStyle": "normal",
+                  "textAlign": "left",
+                  "fontFamily": "Arial",
+                  "fontWeight": "normal",
+                  "lineHeight": "normal",
+                  "letterSpacing": 0,
+                  "textTransform": "none",
+                  "verticalAlign": "top",
+                  "textDecoration": "none"
+                },
+                "animationIn": "none",
+                "animationOut": "none"
+              },
+              "text-options-static": { "text": "<p>Hello, World!</p>" },
+              "text-options-dynamic": {
+                "fallback": "Hello, World!",
+                "data-source": {
+                  "port": "80",
+                  "route": "",
+                  "domain": "",
+                  "value-path": "",
+                  "refresh-rate": "60"
+                }
+              }
+            },
+            "options": {
+              "end": 1000,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          }
+        ],
+        "editorData": { "currentTimestamp": 0 },
+        "isNestedLayout": false
+      },
+      "canvas": {
+        "id": "bba24922-cc9d-4988-bc3b-365dbf8201ae",
+        "name": "Test2",
+        "location": { "x": 2300, "y": 0, "width": 1920, "height": 1080 },
+        "frameRate": 24,
+        "resolution": "1920x1080",
+        "aspectRatio": "16:9"
+      },
+      "player": "default",
+      "status": "00000000-0000-0000-0000-000000000000",
+      "toTime": "23:59:59.000",
+      "weekend": true,
+      "canvasId": "bba24922-cc9d-4988-bc3b-365dbf8201ae",
+      "deviceId": "45f254bf-8aaf-484d-ac96-b86ea9bb6f43",
+      "expireAt": "2025-11-10T05:00:00.000Z",
+      "fromTime": "00:00:00.000",
+      "inceptAt": "2025-11-04T17:54:12.428Z",
+      "layoutId": "9cce2e64-f89b-4ba0-8c3b-c7f64e4deea9",
+      "priority": 2,
+      "inceptNow": true,
+      "expireNever": true,
+      "workingDays": true,
+      "scheduleName": "New Schedule - Hello World"
+    },
+    "created": "2025-11-04T17:54:20.467394+00:00",
+    "modified": "2025-11-04T17:54:20.467330+00:00"
+  }
+]
