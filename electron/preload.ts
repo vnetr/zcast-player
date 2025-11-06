@@ -1,25 +1,27 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer } from "electron";
 
 function safe(v: any) {
   try {
-    if (typeof v === 'string') return v;
+    if (typeof v === "string") return v;
     return JSON.stringify(v);
   } catch {
     return String(v);
   }
 }
 
-['log','info','warn','error'].forEach((level) => {
+["log", "info", "warn", "error"].forEach((level) => {
   const orig = (console as any)[level].bind(console);
   (console as any)[level] = (...args: any[]) => {
-    try { ipcRenderer.send('zcast:console', { level, args: args.map(safe) }); } catch {}
+    try {
+      ipcRenderer.send("zcast:console", { level, args: args.map(safe) });
+    } catch {}
     orig(...args);
   };
 });
 
-window.addEventListener('error', (ev) => {
-  ipcRenderer.send('zcast:console', {
-    level: 'pageerror',
+window.addEventListener("error", (ev) => {
+  ipcRenderer.send("zcast:console", {
+    level: "pageerror",
     message: ev.message,
     filename: ev.filename,
     lineno: ev.lineno,
@@ -28,21 +30,24 @@ window.addEventListener('error', (ev) => {
   });
 });
 
-window.addEventListener('unhandledrejection', (ev: PromiseRejectionEvent) => {
-  ipcRenderer.send('zcast:console', {
-    level: 'unhandledrejection',
+window.addEventListener("unhandledrejection", (ev: PromiseRejectionEvent) => {
+  ipcRenderer.send("zcast:console", {
+    level: "unhandledrejection",
     reason: safe(ev.reason),
   });
 });
 
-contextBridge.exposeInMainWorld('zcast', {
-  readManifest: () => ipcRenderer.invoke('zcast:read-manifest'),
+contextBridge.exposeInMainWorld("zcast", {
+  readManifest: () => ipcRenderer.invoke("zcast:read-manifest"),
   onManifestUpdate: (cb: (data: unknown) => void) => {
     const handler = (_: unknown, payload: unknown) => cb(payload);
-    ipcRenderer.on('zcast:manifest-updated', handler);
-    return () => ipcRenderer.removeListener('zcast:manifest-updated', handler);
+    ipcRenderer.on("zcast:manifest-updated", handler);
+    return () => ipcRenderer.removeListener("zcast:manifest-updated", handler);
   },
+  apiBase: process.env.ZCAST_API_BASE || "https://kraken.zignage.com", // e.g. "https://carl.zignage.com"
+  deviceId: process.env.ZCAST_DEVICE_ID || undefined, // e.g. "FID-LOBBY-01"
+  analyticsToken: process.env.ZCAST_ANALYTICS_TOKEN || undefined,
 });
 
 // Main-side sink:
-ipcRenderer.on('zcast:ping', (_e, msg) => console.log('[main->renderer]', msg));
+ipcRenderer.on("zcast:ping", (_e, msg) => console.log("[main->renderer]", msg));

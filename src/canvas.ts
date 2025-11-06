@@ -1,7 +1,8 @@
 // src/canvas.ts
-import { ScheduleEngine, normalize } from './schedule';
-import type { RendererKind, BaseRendererEl } from './types/renderers';
-import { loadRenderer, createRendererEl } from './renderer/loader';
+import { ScheduleEngine, normalize } from "./schedule";
+import type { RendererKind, BaseRendererEl } from "./types/renderers";
+import { loadRenderer, createRendererEl } from "./renderer/loader";
+import { analytics, makeEventId } from "./analytics";
 
 type CanvasCfg = {
   id: string;
@@ -34,16 +35,19 @@ function pickCanvasCfg(item: ManifestItem): CanvasCfg | null {
 
   const loc = c.location || {};
   const res = parseResolution(c.resolution);
-  const width  = Number(res.w ?? 1920);
+  const width = Number(res.w ?? 1920);
   const height = Number(res.h ?? 1080);
   const x = Number(loc.x ?? 0);
   const y = Number(loc.y ?? 0);
 
   return {
     id: String(c.id),
-    x, y, width, height,
+    x,
+    y,
+    width,
+    height,
     frameRate: c.frameRate,
-    resolution: c.resolution
+    resolution: c.resolution,
   };
 }
 
@@ -88,13 +92,17 @@ export class CanvasPlayer {
 
   // Track last successfully shown doc (by kind+id) to avoid redundant swaps
   private lastGood: { kind: RendererKind; id?: string | number } | null = null;
+  private lastStartAt: number | null = null; // ms epoch when item became visible
+  private lastEventId: string | null = null; // upsert key used for 'started'
 
   constructor(root: HTMLElement, cfg: CanvasCfg) {
     this.root = root;
     this.cfg = cfg;
   }
 
-  id() { return this.cfg.id; }
+  id() {
+    return this.cfg.id;
+  }
 
   /* ---------- DOM bootstrap ---------- */
   mount() {
@@ -103,22 +111,22 @@ export class CanvasPlayer {
     const { x, y, width, height } = this.cfg;
 
     // Viewport container (cropping happens here)
-    const canvas = document.createElement('div');
-    canvas.className = 'canvas';
+    const canvas = document.createElement("div");
+    canvas.className = "canvas";
     Object.assign(canvas.style, {
-      position: 'absolute',
+      position: "absolute",
       left: `${x}px`,
       top: `${y}px`,
       width: `${width}px`,
       height: `${height}px`,
-      overflow: 'hidden',
-      userSelect: 'none',
-      pointerEvents: 'none', // render-only surface; events disabled
+      overflow: "hidden",
+      userSelect: "none",
+      pointerEvents: "none", // render-only surface; events disabled
     } as CSSStyleDeclaration);
 
     // A/B layers inside the canvas
-    const stage = document.createElement('div');
-    stage.className = 'stage';
+    const stage = document.createElement("div");
+    stage.className = "stage";
     stage.innerHTML = `
       <div class="layer visible"></div>
       <div class="layer hidden"></div>
@@ -127,8 +135,8 @@ export class CanvasPlayer {
     this.root.appendChild(canvas);
 
     this.container = canvas;
-    this.stageA = stage.querySelector('.layer.visible') as HTMLDivElement;
-    this.stageB = stage.querySelector('.layer.hidden') as HTMLDivElement;
+    this.stageA = stage.querySelector(".layer.visible") as HTMLDivElement;
+    this.stageB = stage.querySelector(".layer.hidden") as HTMLDivElement;
     this.activeStage = this.stageA;
     this.backStage = this.stageB;
   }
@@ -138,9 +146,18 @@ export class CanvasPlayer {
     if (this.container?.parentElement) {
       this.container.parentElement.removeChild(this.container);
     }
-    try { this.activePlayer?.stop?.(); } catch {}
-    try { this.backPlayer?.stop?.(); } catch {}
-    this.container = this.stageA = this.stageB = this.activeStage = this.backStage = undefined as any;
+    try {
+      this.activePlayer?.stop?.();
+    } catch {}
+    try {
+      this.backPlayer?.stop?.();
+    } catch {}
+    this.container =
+      this.stageA =
+      this.stageB =
+      this.activeStage =
+      this.backStage =
+        undefined as any;
     this.playerA = this.playerB = this.activePlayer = this.backPlayer = null;
     this.activeKind = this.backKind = null;
   }
@@ -165,8 +182,12 @@ export class CanvasPlayer {
     // Filter manifest → only items for this canvas id
     const list = normalize(fullManifest);
     const filtered = list.filter((it: any) => {
-      const cid = it?.canvasId || it?.canvas?.id || it?.data?.canvasId || it?.data?.canvas?.id;
-      return String(cid ?? '') === this.cfg.id;
+      const cid =
+        it?.canvasId ||
+        it?.canvas?.id ||
+        it?.data?.canvasId ||
+        it?.data?.canvas?.id;
+      return String(cid ?? "") === this.cfg.id;
     });
 
     this.engine.updateManifest(filtered);
@@ -176,16 +197,30 @@ export class CanvasPlayer {
   }
 
   /* ---------- helpers: readiness & events ---------- */
-  private waitLoaded(el: HTMLElement, kind: RendererKind, timeoutMs = 6000): Promise<void> {
+  private waitLoaded(
+    el: HTMLElement,
+    kind: RendererKind,
+    timeoutMs = 6000
+  ): Promise<void> {
     // Playlist renderer does not expose a "loaded" event; skip.
-    if (kind === 'playlist') return Promise.resolve();
+    if (kind === "playlist") return Promise.resolve();
 
-    const eventName = 'layoutLoaded';
+    const eventName = "layoutLoaded";
     return new Promise<void>((resolve, reject) => {
       let done = false;
-      const onLoaded = () => { if (!done) { done = true; cleanup(); resolve(); } };
+      const onLoaded = () => {
+        if (!done) {
+          done = true;
+          cleanup();
+          resolve();
+        }
+      };
       const t = setTimeout(() => {
-        if (!done) { done = true; cleanup(); reject(new Error(`${eventName} timeout`)); }
+        if (!done) {
+          done = true;
+          cleanup();
+          reject(new Error(`${eventName} timeout`));
+        }
       }, timeoutMs);
       const cleanup = () => {
         clearTimeout(t);
@@ -196,17 +231,24 @@ export class CanvasPlayer {
   }
 
   private async waitReady(el: BaseRendererEl, timeoutMs = 6000) {
-    try { await el.play(); } catch {}
+    try {
+      await el.play();
+    } catch {}
 
     const rafSettled = new Promise<void>((resolve) => {
       let ticks = 0;
-      const step = () => { if (++ticks >= 3) resolve(); else requestAnimationFrame(step); };
+      const step = () => {
+        if (++ticks >= 3) resolve();
+        else requestAnimationFrame(step);
+      };
       requestAnimationFrame(step);
     });
 
     await Promise.race([
       rafSettled,
-      new Promise<void>((_, rej) => setTimeout(() => rej(new Error('ready-timeout')), timeoutMs)),
+      new Promise<void>((_, rej) =>
+        setTimeout(() => rej(new Error("ready-timeout")), timeoutMs)
+      ),
     ]);
   }
 
@@ -214,21 +256,25 @@ export class CanvasPlayer {
   private async ensureBackRenderer(kind: RendererKind, doc: any) {
     // If playlist is requested, guarantee <layout-renderer> is already defined,
     // because playlist will create and control it internally.
-    if (kind === 'playlist') {
-      await loadRenderer('layout');
-      await customElements.whenDefined('layout-renderer');
-      await loadRenderer('playlist');
-      await customElements.whenDefined('playlist-renderer');
+    if (kind === "playlist") {
+      await loadRenderer("layout");
+      await customElements.whenDefined("layout-renderer");
+      await loadRenderer("playlist");
+      await customElements.whenDefined("playlist-renderer");
     } else {
-      await loadRenderer('layout');
-      await customElements.whenDefined('layout-renderer');
+      await loadRenderer("layout");
+      await customElements.whenDefined("layout-renderer");
     }
 
     // If the back element is missing or a different kind, replace it.
     if (!this.backPlayer || this.backKind !== kind) {
       if (this.backPlayer?.parentElement) {
-        try { this.backPlayer.pause?.(); } catch {}
-        try { this.backPlayer.stop?.(); } catch {}
+        try {
+          this.backPlayer.pause?.();
+        } catch {}
+        try {
+          this.backPlayer.stop?.();
+        } catch {}
         this.backPlayer.parentElement.removeChild(this.backPlayer);
       }
 
@@ -237,11 +283,15 @@ export class CanvasPlayer {
       (el as any).document = doc;
 
       // Fill the viewport (the container is the cropper)
-      Object.assign(el.style, { position: 'absolute', inset: '0' } as CSSStyleDeclaration);
+      Object.assign(el.style, {
+        position: "absolute",
+        inset: "0",
+      } as CSSStyleDeclaration);
 
       // Optional per-canvas frame rate (layout/playlist both accept frameRate in your wrappers)
       try {
-        (el as any).frameRate = this.cfg.frameRate ?? (el as any).frameRate ?? 30;
+        (el as any).frameRate =
+          this.cfg.frameRate ?? (el as any).frameRate ?? 30;
       } catch {}
 
       this.backStage.appendChild(el);
@@ -249,7 +299,7 @@ export class CanvasPlayer {
       this.backPlayer = el;
       this.backKind = kind;
 
-      if (!this.playerA)      this.playerA = el;
+      if (!this.playerA) this.playerA = el;
       else if (!this.playerB) this.playerB = el;
 
       return;
@@ -264,35 +314,101 @@ export class CanvasPlayer {
     this.mount();
     await this.ensureBackRenderer(kind, doc);
 
-    try { await this.backPlayer?.stop?.(); } catch {}
+    try {
+      await this.backPlayer?.stop?.();
+    } catch {}
 
-    await this.waitLoaded(this.backPlayer as unknown as HTMLElement, kind).catch(() => {});
-    try { await this.backPlayer?.play?.(); } catch {}
+    await this.waitLoaded(
+      this.backPlayer as unknown as HTMLElement,
+      kind
+    ).catch(() => {});
+    try {
+      await this.backPlayer?.play?.();
+    } catch {}
 
     await this.waitReady(this.backPlayer!).catch(() => {});
   }
 
   /* ---------- atomic swap ---------- */
   private async swapLayers() {
-    this.activeStage.classList.remove('visible'); this.activeStage.classList.add('hidden');
-    this.backStage.classList.remove('hidden');    this.backStage.classList.add('visible');
+    try {
+      if (this.lastEventId && this.lastStartAt) {
+        const durSec = Math.max(
+          0,
+          Math.floor((Date.now() - this.lastStartAt) / 1000)
+        );
+        analytics.logEventCompleted({
+          event_id: this.lastEventId,
+          duration: durSec,
+          status: "completed",
+        });
+      }
+    } catch {}
+
+    this.activeStage.classList.remove("visible");
+    this.activeStage.classList.add("hidden");
+    this.backStage.classList.remove("hidden");
+    this.backStage.classList.add("visible");
 
     // swap refs & kinds
-    [this.activeStage, this.backStage]   = [this.backStage, this.activeStage];
+    [this.activeStage, this.backStage] = [this.backStage, this.activeStage];
     [this.activePlayer, this.backPlayer] = [this.backPlayer, this.activePlayer];
-    [this.activeKind, this.backKind]     = [this.backKind as RendererKind, this.activeKind as RendererKind];
+    [this.activeKind, this.backKind] = [
+      this.backKind as RendererKind,
+      this.activeKind as RendererKind,
+    ];
 
     // Ensure the now-visible player is actually playing
-    try { await this.activePlayer?.play?.(); } catch {}
-    requestAnimationFrame(async () => { try { await this.activePlayer?.play?.(); } catch {} });
+    try {
+      await this.activePlayer?.play?.();
+    } catch {}
+    requestAnimationFrame(async () => {
+      try {
+        await this.activePlayer?.play?.();
+      } catch {}
+    });
 
     // Quiet the hidden one
-    try { this.backPlayer?.pause?.(); } catch {}
+    try {
+      this.backPlayer?.pause?.();
+    } catch {}
+    try {
+      const meta: any = (this as any)._nextMeta;
+      if (meta && meta.kind && meta.id) {
+        const playerName =
+          meta.player || meta.deviceId || meta.canvasName || "UNKNOWN";
+        const eid = makeEventId(
+          String(playerName),
+          String(meta.id),
+          Date.now()
+        );
+        analytics.logEventStart({
+          event_id: eid,
+          timestamp: new Date().toISOString(),
+          player: playerName,
+          schedule: meta.scheduleName,
+          media: meta.mediaName,
+          customer: meta.customer,
+          user_group: meta.user_group,
+          status: "started",
+          actions: ["started"],
+        });
+        this.lastStartAt = Date.now();
+        this.lastEventId = eid;
+      } else {
+        this.lastStartAt = Date.now();
+        this.lastEventId = null;
+      }
+      (this as any)._nextMeta = undefined; // cleanup
+    } catch {}
   }
 
   /* ---------- loop control ---------- */
   private stopLoop() {
-    if (this.loopTimer) { clearTimeout(this.loopTimer); this.loopTimer = null; }
+    if (this.loopTimer) {
+      clearTimeout(this.loopTimer);
+      this.loopTimer = null;
+    }
   }
   private scheduleNext(ms: number) {
     this.stopLoop();
@@ -300,7 +416,11 @@ export class CanvasPlayer {
   }
 
   /* ---------- engine integration ---------- */
-  private resolveNextFromEngineItem(item: any): { kind: RendererKind; doc: any; id?: string | number } {
+  private resolveNextFromEngineItem(item: any): {
+    kind: RendererKind;
+    doc: any;
+    id?: string | number;
+  } {
     // Common shapes coming from schedule engine or raw manifest:
     // - item.layout (could be a layout or a playlist doc)
     // - item.media (schedule.data.media)
@@ -308,8 +428,9 @@ export class CanvasPlayer {
     const raw = item?.layout ?? item?.media ?? item?.document ?? item;
 
     // Identify playlist vs layout by explicit type or presence of items[]
-    const looksPlaylist = !!raw && (raw.type === 'playlist' || Array.isArray(raw.items));
-    const kind: RendererKind = looksPlaylist ? 'playlist' : 'layout';
+    const looksPlaylist =
+      !!raw && (raw.type === "playlist" || Array.isArray(raw.items));
+    const kind: RendererKind = looksPlaylist ? "playlist" : "layout";
 
     // Use raw as the doc directly (both renderers accept `.document`)
     const doc = raw;
@@ -320,7 +441,10 @@ export class CanvasPlayer {
   }
 
   private async tick(versionAtStart: number) {
-    if (!this.engine) { this.scheduleNext(500); return; }
+    if (!this.engine) {
+      this.scheduleNext(500);
+      return;
+    }
 
     const { item, tickMs } = this.engine.next(new Date());
     if (versionAtStart !== this.manifestVersion) return;
@@ -331,6 +455,7 @@ export class CanvasPlayer {
     }
 
     const next = this.resolveNextFromEngineItem(item);
+
     const same =
       this.lastGood &&
       this.lastGood.kind === next.kind &&
@@ -343,13 +468,30 @@ export class CanvasPlayer {
       return;
     }
 
+    // Capture metadata for analytics to use after the swap
+    const anyItem = item as any;
+    const data: any = anyItem?.data ?? anyItem ?? {};
+    const canvas: any = data.canvas ?? {};
+    const media: any = data.media ?? {};
+    (this as any)._nextMeta = {
+      kind: next.kind,
+      id: next.id,
+      mediaName: media?.name ?? media?.id ?? next.id,
+      scheduleName: data?.scheduleName ?? data?.name,
+      customer: data?.customer,
+      user_group: data?.user_group,
+      player: data?.player, // prefer explicit player on item
+      deviceId: data?.deviceId, // fallback
+      canvasName: canvas?.name,
+    };
+
     try {
       await this.prepareOffscreen(next.kind, next.doc);
       if (versionAtStart !== this.manifestVersion) return;
       await this.swapLayers();
       this.lastGood = { kind: next.kind, id: next.id };
     } catch (e) {
-      console.error('[canvas] prepare/swap failed; keeping current item', e);
+      console.error("[canvas] prepare/swap failed; keeping current item", e);
     }
 
     this.scheduleNext(Math.max(500, tickMs));
