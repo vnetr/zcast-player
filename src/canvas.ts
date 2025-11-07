@@ -94,7 +94,7 @@ export class CanvasPlayer {
   private lastGood: { kind: RendererKind; id?: string | number } | null = null;
   private lastStartAt: number | null = null; // ms epoch when item became visible
   private lastEventId: string | null = null; // upsert key used for 'started'
-
+  private lastMeta: any = null;
   constructor(root: HTMLElement, cfg: CanvasCfg) {
     this.root = root;
     this.cfg = cfg;
@@ -337,10 +337,24 @@ export class CanvasPlayer {
           0,
           Math.floor((Date.now() - this.lastStartAt) / 1000)
         );
+        const m = this.lastMeta || {};
+
+        const playerName =
+          m.player ||
+          m.deviceId ||
+          (typeof window !== "undefined" && (window as any).zcast?.deviceId) ||
+          m.canvasName ||
+          "UNKNOWN";
+
         analytics.logEventCompleted({
           event_id: this.lastEventId,
           duration: durSec,
           status: "completed",
+          player: playerName,
+          schedule: m.scheduleName,
+          media: m.mediaName,
+          customer: m.customer,
+          user_group: m.user_group,
         });
       }
     } catch {}
@@ -376,12 +390,18 @@ export class CanvasPlayer {
       const meta: any = (this as any)._nextMeta;
       if (meta && meta.kind && meta.id) {
         const playerName =
-          meta.player || meta.deviceId || meta.canvasName || "UNKNOWN";
+          meta.player ||
+          meta.deviceId ||
+          (typeof window !== "undefined" && (window as any).zcast?.deviceId) ||
+          meta.canvasName ||
+          "UNKNOWN";
+
         const eid = makeEventId(
           String(playerName),
           String(meta.id),
           Date.now()
         );
+
         analytics.logEventStart({
           event_id: eid,
           timestamp: new Date().toISOString(),
@@ -393,13 +413,16 @@ export class CanvasPlayer {
           status: "started",
           actions: ["started"],
         });
+
         this.lastStartAt = Date.now();
         this.lastEventId = eid;
+        this.lastMeta = meta;
       } else {
         this.lastStartAt = Date.now();
         this.lastEventId = null;
+        this.lastMeta = null;
       }
-      (this as any)._nextMeta = undefined; // cleanup
+      (this as any)._nextMeta = undefined;
     } catch {}
   }
 
