@@ -18,18 +18,26 @@ declare global {
 const root = document.getElementById("root")!;
 const mgr = new CanvasManager(root);
 function bootAnalyticsFromManifest(manifest: any) {
+  console.info('[analytics] bootAnalyticsFromManifest called');
+
+  const items = Array.isArray(manifest) ? manifest : [];
+  const first = (items[0]?.data ?? items[0]) || {};
+
+  const defaults = {
+    player: window.zcast?.deviceId || first.player || first.deviceId,
+    customer: first.customer,
+    user_group: first.user_group,
+    tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York',
+  };
+
+  const endpointBase = window.zcast?.apiBase || location.origin;
+
   try {
-    const items = Array.isArray(manifest) ? manifest : [];
-    const first = (items[0]?.data ?? items[0]) || {};
-
-    const defaults = {
-      player: window.zcast?.deviceId || first.player || first.deviceId,
-      customer: first.customer,
-      user_group: first.user_group,
-      tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York',
-    };
-
-    const endpointBase = window.zcast?.apiBase || location.origin;
+    console.info('[analytics] initAnalytics()', {
+      endpointBase,
+      defaults,
+      hasToken: !!window.zcast?.analyticsToken,
+    });
 
     initAnalytics({
       endpointBase,
@@ -39,7 +47,7 @@ function bootAnalyticsFromManifest(manifest: any) {
       defaults,
     });
 
-    // NEW: send one boot event so we can verify analytics end-to-end
+    // One boot event so we can see traffic without touching DevTools manually
     analytics.logEventStart({
       event_id: 'zcast-boot-' + Date.now(),
       player: defaults.player || 'UNKNOWN',
@@ -48,10 +56,13 @@ function bootAnalyticsFromManifest(manifest: any) {
       status: 'started',
       actions: ['boot'],
     });
-  } catch {
-    // best effort, do not break playback
+
+    console.info('[analytics] boot event enqueued');
+  } catch (err) {
+    console.error('[analytics] boot/init failed', err);
   }
 }
+
 
 
 // ---------- manifest application ----------
