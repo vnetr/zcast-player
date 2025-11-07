@@ -42,16 +42,16 @@ if (!app.isPackaged) {
 function readTpmNv(index: number): string | undefined {
   try {
     // Preferred: run without password if sudoers is configured for tpm2_nvread
-    const out = execSync(`tpm2_nvread -C o -s 2048 ${index}`, { encoding: 'utf8' });
-    const v = out.trim();
+    const out = execSync(`tpm2_nvread -C o -s 2048 ${index}`);
+    const v = sanitizeNvValue(out);
     if (v) return v;
   } catch (e1) {
     try {
-      // Fallback: use sudo with password (as provided)
+      // Fallback: use sudo with password
       const sudoPass = process.env.ZCAST_SUDO_PASS || 'zignage';
       const cmd = `echo "${sudoPass}" | sudo -S tpm2_nvread -C o -s 2048 ${index}`;
-      const out = execSync(cmd, { encoding: 'utf8' });
-      const v = out.trim();
+      const out = execSync(cmd);
+      const v = sanitizeNvValue(out);
       if (v) return v;
     } catch (e2) {
       console.warn(`[zcast] tpm2_nvread failed for index ${index}`);
@@ -59,6 +59,24 @@ function readTpmNv(index: number): string | undefined {
   }
   return undefined;
 }
+function sanitizeNvValue(raw: string | Buffer): string {
+  const s =
+    typeof raw === 'string'
+      ? raw
+      : raw.toString('utf8');
+
+  // 1) Drop NULs
+  // 2) Drop other non-printable bytes
+  // 3) Trim spaces
+  const cleaned = s
+    .replace(/\u0000/g, '')
+    .replace(/[^\x20-\x7E]/g, '')
+    .trim();
+
+  // 4) Take only the first whitespace-separated token (handles padding/newlines)
+  return cleaned.split(/\s+/)[0];
+}
+
 
 function loadConfigFromTpm() {
   // Convention from your teammate:
