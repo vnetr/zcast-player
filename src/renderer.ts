@@ -1,6 +1,7 @@
 // src/renderer.ts
 import { CanvasManager } from "./canvas";
-import { initAnalytics } from "./analytics";
+import { initAnalytics, analytics } from './analytics';
+
 
 declare global {
   interface Window {
@@ -37,10 +38,21 @@ function bootAnalyticsFromManifest(manifest: any) {
       maxBatch: 60,
       defaults,
     });
+
+    // NEW: send one boot event so we can verify analytics end-to-end
+    analytics.logEventStart({
+      event_id: 'zcast-boot-' + Date.now(),
+      player: defaults.player || 'UNKNOWN',
+      schedule: 'boot',
+      media: 'boot',
+      status: 'started',
+      actions: ['boot'],
+    });
   } catch {
-    // no-op: analytics init is best-effort
+    // best effort, do not break playback
   }
 }
+
 
 // ---------- manifest application ----------
 async function applyManifest(manifest: any) {
