@@ -6,6 +6,8 @@ import * as url from 'url';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
 import chokidar from 'chokidar';
+import { execSync } from 'child_process';
+
 
 // =======================
 // Safety: never die on EPIPE / logging
@@ -36,6 +38,46 @@ process.on('unhandledRejection', (reason: any) => {
 if (!app.isPackaged) {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 }
+
+function readTpmNv(index: number): string | undefined {
+  try {
+    // Preferred: run without password if sudoers is configured for tpm2_nvread
+    const out = execSync(`tpm2_nvread -C o -s 2048 ${index}`, { encoding: 'utf8' });
+    const v = out.trim();
+    if (v) return v;
+  } catch (e1) {
+    try {
+      // Fallback: use sudo with password (as provided)
+      const sudoPass = process.env.ZCAST_SUDO_PASS || 'zignage';
+      const cmd = `echo "${sudoPass}" | sudo -S tpm2_nvread -C o -s 2048 ${index}`;
+      const out = execSync(cmd, { encoding: 'utf8' });
+      const v = out.trim();
+      if (v) return v;
+    } catch (e2) {
+      console.warn(`[zcast] tpm2_nvread failed for index ${index}`);
+    }
+  }
+  return undefined;
+}
+
+function loadConfigFromTpm() {
+  // Convention from your teammate:
+  // NV index 2 → API base URL
+  // NV index 3 → deviceId
+  const apiBase = readTpmNv(2);
+  const deviceId = readTpmNv(3);
+
+  if (apiBase && !process.env.ZCAST_API_BASE) {
+    process.env.ZCAST_API_BASE = apiBase;
+    console.log('[zcast] ZCAST_API_BASE loaded from TPM:', apiBase);
+  }
+
+  if (deviceId && !process.env.ZCAST_DEVICE_ID) {
+    process.env.ZCAST_DEVICE_ID = deviceId;
+    console.log('[zcast] ZCAST_DEVICE_ID loaded from TPM:', deviceId);
+  }
+}
+
 
 // =======================
 
@@ -122,7 +164,7 @@ function createWindow() {
 
 const mf = manifestFilePath();
 if (!mf) console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specified. Dev HMR only.');
-
+loadConfigFromTpm();
 app.whenReady().then(() => {
   // ---- paths ----
   const distIndex = prodIndexHtml();                            // /opt/.../app.asar/dist/index.html
