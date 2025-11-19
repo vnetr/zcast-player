@@ -42,14 +42,14 @@ if (!app.isPackaged) {
 function readTpmNv(index: number): string | undefined {
   try {
     // Preferred: run without password if sudoers is configured for tpm2_nvread
-    const out = execSync(`tpm2_nvread -C o -s 2048 ${index}`);
+    const out = execSync(`tpm2_nvread -C o -s ${TPM_NV_SIZE} ${index}`);
     const v = sanitizeNvValue(out);
     if (v) return v;
   } catch (e1) {
     try {
       // Fallback: use sudo with password
       const sudoPass = process.env.ZCAST_SUDO_PASS || 'zignage';
-      const cmd = `echo "${sudoPass}" | sudo -S tpm2_nvread -C o -s 2048 ${index}`;
+      const cmd = `echo "${sudoPass}" | sudo -S tpm2_nvread -C o -s ${TPM_NV_SIZE} ${index}`;
       const out = execSync(cmd);
       const v = sanitizeNvValue(out);
       if (v) return v;
@@ -59,6 +59,7 @@ function readTpmNv(index: number): string | undefined {
   }
   return undefined;
 }
+
 function sanitizeNvValue(raw: string | Buffer): string {
   const s =
     typeof raw === 'string'
@@ -126,6 +127,8 @@ app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 let win: BrowserWindow | null = null;
+// Default TPM NV size (bytes). Can be overridden via env if needed.
+const TPM_NV_SIZE = Number(process.env.ZCAST_TPM_NV_SIZE || '1024');
 
 function getArg(name: string): string | undefined {
   const prefix = `--${name}=`;
