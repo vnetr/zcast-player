@@ -118,13 +118,66 @@ const WATCH_USE_POLL = /^(1|true|yes)$/i.test(String(process.env.ZCAST_MANIFEST_
 const WATCH_INTERVAL = Number(process.env.ZCAST_MANIFEST_WATCH_INTERVAL ?? 500);
 
 // -------- GPU / HW accel --------
+const enableFeatures = new Set<string>([
+  'CanvasOopRasterization',
+  'VideoDecodeLinuxZeroCopyGL',
+]);
+
+const disableFeatures = new Set<string>();
+
+const hwDecodeMode = (process.env.ZCAST_HW_DECODE || 'auto').toLowerCase();
+// auto | vaapi | off
+
+function looksLikeNvidiaDisplay(): boolean {
+  // Cheap heuristic: if NVIDIA kernel driver is present, treat as NVIDIA display box
+  // (works for most of your fleet; hybrids can override via env)
+  try {
+    return fs.existsSync('/proc/driver/nvidia/version') ||
+           fs.existsSync('/dev/nvidia0');
+  } catch {
+    return false;
+  }
+}
+
+function hasVaapiPin(): boolean {
+  return !!process.env.LIBVA_DRIVER_NAME || !!process.env.LIBVA_DRM_DEVICE;
+}
+
+// VAAPI decision
+if (hwDecodeMode === 'vaapi') {
+  enableFeatures.add('VaapiVideoDecoder'); // DO NOT add IgnoreDriverChecks
+} else if (hwDecodeMode === 'off') {
+  disableFeatures.add('VaapiVideoDecoder');
+  disableFeatures.add('VaapiIgnoreDriverChecks');
+} else {
+  // auto:
+  // - if NVIDIA display, don't force VAAPI (prevents your 200% CPU thrash)
+  // - if user pinned VAAPI to a render node, allow it
+  if (!looksLikeNvidiaDisplay() || hasVaapiPin()) {
+    enableFeatures.add('VaapiVideoDecoder');
+  }
+}
+
+// Apply switches ONCE
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
-app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,VaapiIgnoreDriverChecks,VideoDecodeLinuxZeroCopyGL,CanvasOopRasterization');
-app.commandLine.appendSwitch('use-gl', 'egl');
+
+app.commandLine.appendSwitch('enable-features', [...enableFeatures].join(','));
+if (disableFeatures.size) {
+  app.commandLine.appendSwitch('disable-features', [...disableFeatures].join(','));
+}
+
+// GL backend: portable choice
+app.commandLine.appendSwitch('use-angle', 'gl-egl');  // good cross-vendor on X11
+
+// Only force use-gl if you *explicitly* want to for a box
+if (process.env.ZCAST_FORCE_USE_GL) {
+  app.commandLine.appendSwitch('use-gl', String(process.env.ZCAST_FORCE_USE_GL));
+}
+
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
-app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 let win: BrowserWindow | null = null;
 // Default TPM NV size (bytes). Can be overridden via env if needed.
