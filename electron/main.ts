@@ -27,11 +27,11 @@ try {
 
 process.on('uncaughtException', (err: any) => {
   if (err && err.code === 'EPIPE') return;
-  try { console.error('[main] uncaughtException:', err); } catch {}
+  try { console.error('[main] uncaughtException:', err); } catch { }
 });
 
 process.on('unhandledRejection', (reason: any) => {
-  try { console.error('[main] unhandledRejection:', reason); } catch {}
+  try { console.error('[main] unhandledRejection:', reason); } catch { }
 });
 
 // (Dev only) silence Electron’s CSP banner; prod doesn’t show it anyway
@@ -107,15 +107,15 @@ const toFileUrl = (p: string) => url.pathToFileURL(p).href;
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 // Debug toggles
-const DEBUG_ALL     = /^(1|true|yes)$/i.test(String(process.env.ZCAST_DEBUG || ''));
-const DEBUG_ASSETS  = DEBUG_ALL || /^(1|true|yes)$/i.test(String(process.env.ZCAST_DEBUG_ASSETS || ''));
-const DEBUG_MAN     = DEBUG_ALL || /^(1|true|yes)$/i.test(String(process.env.ZCAST_DEBUG_MANIFEST || ''));
+const DEBUG_ALL = /^(1|true|yes)$/i.test(String(process.env.ZCAST_DEBUG || ''));
+const DEBUG_ASSETS = DEBUG_ALL || /^(1|true|yes)$/i.test(String(process.env.ZCAST_DEBUG_ASSETS || ''));
+const DEBUG_MAN = DEBUG_ALL || /^(1|true|yes)$/i.test(String(process.env.ZCAST_DEBUG_MANIFEST || ''));
 
 // Manifest read/watch tuning
-const READ_BUDGET_MS   = Number(process.env.ZCAST_MANIFEST_READ_BUDGET_MS ?? 2500);
-const QUIET_MS         = Number(process.env.ZCAST_MANIFEST_QUIET_MS ?? 120);
-const WATCH_USE_POLL   = /^(1|true|yes)$/i.test(String(process.env.ZCAST_MANIFEST_WATCH_POLL || ''));
-const WATCH_INTERVAL   = Number(process.env.ZCAST_MANIFEST_WATCH_INTERVAL ?? 500);
+const READ_BUDGET_MS = Number(process.env.ZCAST_MANIFEST_READ_BUDGET_MS ?? 2500);
+const QUIET_MS = Number(process.env.ZCAST_MANIFEST_QUIET_MS ?? 120);
+const WATCH_USE_POLL = /^(1|true|yes)$/i.test(String(process.env.ZCAST_MANIFEST_WATCH_POLL || ''));
+const WATCH_INTERVAL = Number(process.env.ZCAST_MANIFEST_WATCH_INTERVAL ?? 500);
 
 // -------- GPU / HW accel --------
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
@@ -304,27 +304,60 @@ app.whenReady().then(() => {
     });
   } catch { }
 
+  function canonicalizeForHash(raw: string): string {
+    try {
+      const u = new URL(raw);
+      const proto = u.protocol.toLowerCase();          // http/https
+      const host = u.hostname.toLowerCase();          // lincoln.zignage.com
+      const port = u.port ? `:${u.port}` : '';
+      const path = u.pathname;                        // /media/mediaAsset/...
+
+      // IMPORTANT: ignore search and hash when hashing, since CMS hashed the clean URL
+      return `${proto}//${host}${port}${path}`;
+    } catch {
+      // If it isn't a valid URL, just fall back
+      return raw;
+    }
+  }
+
   function mapRemoteToLocal(remoteUrl: string): string | null {
     try {
+      if (DEBUG_ASSETS) console.log('[assets] mapRemoteToLocal IN', remoteUrl);
+
       const u = new URL(remoteUrl);
       const ext = (u.pathname.split('.').pop() || '').toLowerCase();
-      if (!MEDIA_EXTS.has(ext)) return null;
+      if (!MEDIA_EXTS.has(ext)) {
+        if (DEBUG_ASSETS) console.log('[assets]   skip ext', ext);
+        return null;
+      }
 
-      const uhash = sha256(remoteUrl);
+      const urlForHash = canonicalizeForHash(remoteUrl);
+      const uhash = sha256(urlForHash);
       const name = decodeURIComponent(u.pathname.split('/').pop() || 'asset');
+
+      if (DEBUG_ASSETS) {
+        console.log('[assets]   canonical:', urlForHash);
+        console.log('[assets]   urlHash:', uhash);
+      }
 
       // 1) url-hash alias
       const aliasPath = path.join(ASSETS_SUB, 'u', uhash, name);
+      if (DEBUG_ASSETS) console.log('[assets]   aliasPath', aliasPath, 'exists?', fs.existsSync(aliasPath));
       if (fs.existsSync(aliasPath)) return aliasPath;
 
       // 2) content-hash via index
       const hit = assetIndex?.items?.find((x) => x.urlHash === uhash);
+      if (DEBUG_ASSETS) console.log('[assets]   index hit', hit);
       if (hit?.contentHash) {
         const contentPath = path.join(ASSETS_SUB, 'h', hit.contentHash, hit.name);
+        if (DEBUG_ASSETS) console.log('[assets]   contentPath', contentPath, 'exists?', fs.existsSync(contentPath));
         if (fs.existsSync(contentPath)) return contentPath;
       }
+
+      if (DEBUG_ASSETS) console.log('[assets]   no local match');
       return null;
-    } catch {
+    } catch (e) {
+      if (DEBUG_ASSETS) console.log('[assets] mapRemoteToLocal error', e);
       return null;
     }
   }
@@ -537,14 +570,14 @@ app.whenReady().then(() => {
     });
 
     watcher
-      .on('add',    () => { if (DEBUG_MAN) console.log('[zcast] manifest add');    maybeBroadcastFromDisk(file, 'add'); })
+      .on('add', () => { if (DEBUG_MAN) console.log('[zcast] manifest add'); maybeBroadcastFromDisk(file, 'add'); })
       .on('change', () => { if (DEBUG_MAN) console.log('[zcast] manifest change'); maybeBroadcastFromDisk(file, 'change'); })
       .on('unlink', () => {
         lastManifestHash = '';
         lastManifestObject = null;
         if (DEBUG_MAN) console.warn('[zcast] manifest file unlinked; waiting for re-create…');
       })
-      .on('error',  (err) => console.warn('[zcast] chokidar watcher error:', err));
+      .on('error', (err) => console.warn('[zcast] chokidar watcher error:', err));
 
     console.info('[zcast] Watching manifest (chokidar):', file, WATCH_USE_POLL ? '(polling)' : '');
   }
