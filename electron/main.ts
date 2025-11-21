@@ -121,8 +121,8 @@ const WATCH_INTERVAL = Number(process.env.ZCAST_MANIFEST_WATCH_INTERVAL ?? 500);
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
-app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,CanvasOopRasterization');
-app.commandLine.appendSwitch('use-angle', 'gl-egl');
+app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,VaapiIgnoreDriverChecks,VideoDecodeLinuxZeroCopyGL,CanvasOopRasterization');
+app.commandLine.appendSwitch('use-gl', 'egl');
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
