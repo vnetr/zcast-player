@@ -169,12 +169,21 @@ if (disableFeatures.size) {
 }
 
 // GL backend: portable choice
-app.commandLine.appendSwitch('use-angle', 'gl-egl');  // good cross-vendor on X11
+// GL backend selection (fix EGL on NVIDIA X11)
+if (looksLikeNvidiaDisplay()) {
+  // NVIDIA + X11: do not force ANGLE/EGL, use desktop GLX
+  app.commandLine.appendSwitch('use-gl', 'desktop');
+  // IMPORTANT: don't set use-angle here
+} else {
+  // Intel/AMD/others: ANGLE default is fine
+  app.commandLine.appendSwitch('use-angle', 'default');
+}
 
-// Only force use-gl if you *explicitly* want to for a box
+// Only force use-gl if explicitly set (overrides above)
 if (process.env.ZCAST_FORCE_USE_GL) {
   app.commandLine.appendSwitch('use-gl', String(process.env.ZCAST_FORCE_USE_GL));
 }
+
 
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
