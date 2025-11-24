@@ -169,20 +169,10 @@ if (disableFeatures.size) {
 }
 
 // GL backend: portable choice
-// GL backend selection (fix EGL on NVIDIA X11)
-if (looksLikeNvidiaDisplay()) {
-  // NVIDIA + X11: do not force ANGLE/EGL, use desktop GLX
-  app.commandLine.appendSwitch('use-gl', 'desktop');
-  // IMPORTANT: don't set use-angle here
-} else {
-  // Intel/AMD/others: ANGLE default is fine
-  app.commandLine.appendSwitch('use-angle', 'default');
-}
+app.commandLine.appendSwitch('use-gl', 'egl-angle');
 
-// Only force use-gl if explicitly set (overrides above)
-if (process.env.ZCAST_FORCE_USE_GL) {
-  app.commandLine.appendSwitch('use-gl', String(process.env.ZCAST_FORCE_USE_GL));
-}
+// Keep ANGLE default (safe across drivers)
+app.commandLine.appendSwitch('use-angle', 'default');
 
 
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
