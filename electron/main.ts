@@ -133,7 +133,7 @@ function looksLikeNvidiaDisplay(): boolean {
   // (works for most of your fleet; hybrids can override via env)
   try {
     return fs.existsSync('/proc/driver/nvidia/version') ||
-           fs.existsSync('/dev/nvidia0');
+      fs.existsSync('/dev/nvidia0');
   } catch {
     return false;
   }
@@ -175,27 +175,15 @@ app.commandLine.appendSwitch('ozone-platform', 'x11'); // belt + suspenders
 // ---- GL backend: vendor-aware ----
 const forceGL = process.env.ZCAST_FORCE_USE_GL;
 const forceANGLE = process.env.ZCAST_FORCE_USE_ANGLE;
-
-if (forceGL) {
+const cliHasUseGl = process.argv.some(a => a.startsWith('--use-gl='));
+const cliHasUseAngle = process.argv.some(a => a.startsWith('--use-angle='));
+if (forceGL && !cliHasUseGl) {
   app.commandLine.appendSwitch('use-gl', forceGL);
-} else {
-  // AMD/Intel boxes are happiest with native desktop GL on X11
-  if (looksLikeNvidiaDisplay()) {
-    app.commandLine.appendSwitch('use-gl', 'egl-angle');
-  } else {
-    app.commandLine.appendSwitch('use-gl', 'desktop'); // GLX
-  }
+}
+if (forceANGLE && !cliHasUseAngle) {
+  app.commandLine.appendSwitch('use-angle', forceANGLE);
 }
 
-if (forceANGLE) {
-  app.commandLine.appendSwitch('use-angle', forceANGLE);
-} else {
-  // Don't force ANGLE on non-NVIDIA; let Chromium use native GL
-  if (looksLikeNvidiaDisplay()) {
-    app.commandLine.appendSwitch('use-angle', 'default');
-  }
-  // else: no use-angle switch at all
-}
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 let win: BrowserWindow | null = null;
