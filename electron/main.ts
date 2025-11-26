@@ -172,17 +172,28 @@ if (disableFeatures.size) {
 app.commandLine.appendSwitch('ozone-platform-hint', 'x11');
 app.commandLine.appendSwitch('ozone-platform', 'x11'); // belt + suspenders
 
-// ---- GL backend: vendor-aware ----
-const forceGL = process.env.ZCAST_FORCE_USE_GL;
-const forceANGLE = process.env.ZCAST_FORCE_USE_ANGLE;
+// ---- GL backend: force a sane default (egl-angle/default), allow overrides ----
+const forceGL = (process.env.ZCAST_FORCE_USE_GL || '').trim();
+const forceANGLE = (process.env.ZCAST_FORCE_USE_ANGLE || '').trim();
 const cliHasUseGl = process.argv.some(a => a.startsWith('--use-gl='));
 const cliHasUseAngle = process.argv.some(a => a.startsWith('--use-angle='));
-if (forceGL && !cliHasUseGl) {
-  app.commandLine.appendSwitch('use-gl', forceGL);
+
+let useGl = forceGL;
+let useAngle = forceANGLE;
+
+// If nothing is forced, request the only combo we know Chromium supports in this build
+if (!useGl) useGl = 'egl-angle';
+if (!useAngle) useAngle = 'default';
+
+if (!cliHasUseGl) {
+  console.log('[zcast][gpu] use-gl =', useGl);
+  app.commandLine.appendSwitch('use-gl', useGl);
 }
-if (forceANGLE && !cliHasUseAngle) {
-  app.commandLine.appendSwitch('use-angle', forceANGLE);
+if (!cliHasUseAngle) {
+  console.log('[zcast][gpu] use-angle =', useAngle);
+  app.commandLine.appendSwitch('use-angle', useAngle);
 }
+
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
