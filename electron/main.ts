@@ -120,14 +120,13 @@ const WATCH_INTERVAL = Number(process.env.ZCAST_MANIFEST_WATCH_INTERVAL ?? 500);
 // -------- GPU / HW accel --------
 const enableFeatures = new Set<string>([
   'CanvasOopRasterization',
-  'VideoDecodeLinuxZeroCopyGL',
 ]);
 
 const disableFeatures = new Set<string>();
 
 const hwDecodeMode = (process.env.ZCAST_HW_DECODE || 'auto').toLowerCase();
 // auto | vaapi | off
-
+const isNvidiaDisplay = looksLikeNvidiaDisplay();
 function looksLikeNvidiaDisplay(): boolean {
   // Cheap heuristic: if NVIDIA kernel driver is present, treat as NVIDIA display box
   // (works for most of your fleet; hybrids can override via env)
@@ -145,7 +144,7 @@ function hasVaapiPin(): boolean {
 
 // VAAPI decision
 if (hwDecodeMode === 'vaapi') {
-  enableFeatures.add('VaapiVideoDecoder'); // DO NOT add IgnoreDriverChecks
+  enableFeatures.add('VaapiVideoDecoder');
 } else if (hwDecodeMode === 'off') {
   disableFeatures.add('VaapiVideoDecoder');
   disableFeatures.add('VaapiIgnoreDriverChecks');
@@ -153,47 +152,68 @@ if (hwDecodeMode === 'vaapi') {
   // auto:
   // - if NVIDIA display, don't force VAAPI (prevents your 200% CPU thrash)
   // - if user pinned VAAPI to a render node, allow it
-  if (!looksLikeNvidiaDisplay() || hasVaapiPin()) {
+  if (!isNvidiaDisplay || hasVaapiPin()) {
     enableFeatures.add('VaapiVideoDecoder');
   }
 }
 
+// Extra: only Nvidia gets the aggressive ZeroCopy feature
+if (isNvidiaDisplay) {
+  enableFeatures.add('VideoDecodeLinuxZeroCopyGL');
+}
+
+
 // Apply switches ONCE
-app.commandLine.appendSwitch('ignore-gpu-blocklist');
-app.commandLine.appendSwitch('enable-gpu-rasterization');
-app.commandLine.appendSwitch('enable-zero-copy');
+if (isNvidiaDisplay) {
+  // These were tuned for the Nvidia signage boxes
+  app.commandLine.appendSwitch('ignore-gpu-blocklist');
+  app.commandLine.appendSwitch('enable-gpu-rasterization');
+  app.commandLine.appendSwitch('enable-zero-copy');
+} else {
+  console.log('[zcast][gpu] non-Nvidia: using conservative defaults (no explicit zero-copy/raster switches).');
+}
 
 app.commandLine.appendSwitch('enable-features', [...enableFeatures].join(','));
 if (disableFeatures.size) {
   app.commandLine.appendSwitch('disable-features', [...disableFeatures].join(','));
 }
 
+
 // GL backend: portable choice
 app.commandLine.appendSwitch('ozone-platform-hint', 'x11');
 app.commandLine.appendSwitch('ozone-platform', 'x11'); // belt + suspenders
 
-// ---- GL backend: force a sane default (egl-angle/default), allow overrides ----
+// ---- GL backend: vendor-aware ----
 const forceGL = (process.env.ZCAST_FORCE_USE_GL || '').trim();
 const forceANGLE = (process.env.ZCAST_FORCE_USE_ANGLE || '').trim();
 const cliHasUseGl = process.argv.some(a => a.startsWith('--use-gl='));
 const cliHasUseAngle = process.argv.some(a => a.startsWith('--use-angle='));
 
-let useGl = forceGL;
-let useAngle = forceANGLE;
+if (isNvidiaDisplay) {
+  // Old behavior for Nvidia boxes: ANGLE + EGL
+  let useGl = forceGL || 'egl-angle';
+  let useAngle = forceANGLE || 'default';
 
-// If nothing is forced, request the only combo we know Chromium supports in this build
-if (!useGl) useGl = 'egl-angle';
-if (!useAngle) useAngle = 'default';
-
-if (!cliHasUseGl) {
-  console.log('[zcast][gpu] use-gl =', useGl);
-  app.commandLine.appendSwitch('use-gl', useGl);
+  if (!cliHasUseGl) {
+    console.log('[zcast][gpu] NVIDIA: use-gl =', useGl);
+    app.commandLine.appendSwitch('use-gl', useGl);
+  }
+  if (!cliHasUseAngle) {
+    console.log('[zcast][gpu] NVIDIA: use-angle =', useAngle);
+    app.commandLine.appendSwitch('use-angle', useAngle);
+  }
+} else {
+  // Intel / anything else: DO NOT force ANGLE; let Electron pick what works.
+  if (!cliHasUseGl && forceGL) {
+    console.log('[zcast][gpu] non-NVIDIA: honoring forced use-gl =', forceGL);
+    app.commandLine.appendSwitch('use-gl', forceGL);
+  }
+  if (!cliHasUseAngle && forceANGLE) {
+    console.log('[zcast][gpu] non-NVIDIA: honoring forced use-angle =', forceANGLE);
+    app.commandLine.appendSwitch('use-angle', forceANGLE);
+  }
+  console.log('[zcast][gpu] non-NVIDIA: using default GL backend (no ANGLE override).');
 }
-if (!cliHasUseAngle) {
-  console.log('[zcast][gpu] use-angle =', useAngle);
-  app.commandLine.appendSwitch('use-angle', useAngle);
-}
-
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
