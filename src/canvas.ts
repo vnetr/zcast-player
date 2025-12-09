@@ -150,16 +150,16 @@ export class CanvasPlayer {
     }
     try {
       this.activePlayer?.stop?.();
-    } catch {}
+    } catch { }
     try {
       this.backPlayer?.stop?.();
-    } catch {}
+    } catch { }
     this.container =
       this.stageA =
       this.stageB =
       this.activeStage =
       this.backStage =
-        undefined as any;
+      undefined as any;
     this.playerA = this.playerB = this.activePlayer = this.backPlayer = null;
     this.activeKind = this.backKind = null;
   }
@@ -235,7 +235,7 @@ export class CanvasPlayer {
   private async waitReady(el: BaseRendererEl, timeoutMs = 6000) {
     try {
       await el.play();
-    } catch {}
+    } catch { }
 
     const rafSettled = new Promise<void>((resolve) => {
       let ticks = 0;
@@ -273,10 +273,10 @@ export class CanvasPlayer {
       if (this.backPlayer?.parentElement) {
         try {
           this.backPlayer.pause?.();
-        } catch {}
+        } catch { }
         try {
           this.backPlayer.stop?.();
-        } catch {}
+        } catch { }
         this.backPlayer.parentElement.removeChild(this.backPlayer);
       }
 
@@ -294,7 +294,7 @@ export class CanvasPlayer {
       try {
         (el as any).frameRate =
           this.cfg.frameRate ?? (el as any).frameRate ?? 30;
-      } catch {}
+      } catch { }
 
       this.backStage.appendChild(el);
 
@@ -318,17 +318,17 @@ export class CanvasPlayer {
 
     try {
       await this.backPlayer?.stop?.();
-    } catch {}
+    } catch { }
 
     await this.waitLoaded(
       this.backPlayer as unknown as HTMLElement,
       kind
-    ).catch(() => {});
-    try {
-      await this.backPlayer?.play?.();
-    } catch {}
+    ).catch(() => { });
+    // try {
+    //   await this.backPlayer?.play?.();
+    // } catch {}
 
-    await this.waitReady(this.backPlayer!).catch(() => {});
+    // await this.waitReady(this.backPlayer!).catch(() => {});
   }
 
   /* ---------- atomic swap ---------- */
@@ -359,14 +359,15 @@ export class CanvasPlayer {
           user_group: m.user_group,
         });
       }
-    } catch {}
+    } catch { }
 
+    // Swap layer classes
     this.activeStage.classList.remove("visible");
     this.activeStage.classList.add("hidden");
     this.backStage.classList.remove("hidden");
     this.backStage.classList.add("visible");
 
-    // swap refs & kinds
+    // Swap refs & kinds
     [this.activeStage, this.backStage] = [this.backStage, this.activeStage];
     [this.activePlayer, this.backPlayer] = [this.backPlayer, this.activePlayer];
     [this.activeKind, this.backKind] = [
@@ -374,20 +375,21 @@ export class CanvasPlayer {
       this.activeKind as RendererKind,
     ];
 
-    // Ensure the now-visible player is actually playing
-    try {
-      await this.activePlayer?.play?.();
-    } catch {}
-    requestAnimationFrame(async () => {
+    // Now the new active player is actually visible → start playback here.
+    if (this.activePlayer) {
       try {
-        await this.activePlayer?.play?.();
-      } catch {}
-    });
+        await this.waitReady(this.activePlayer); // waitReady will call .play() internally
+      } catch (err) {
+        console.warn("[canvas] activePlayer did not become ready", err);
+      }
+    }
 
     // Quiet the hidden one
     try {
       this.backPlayer?.pause?.();
-    } catch {}
+    } catch { }
+
+    // Analytics: "started" for the new thing
     try {
       const meta: any = (this as any)._nextMeta;
       if (meta && meta.kind && meta.id) {
@@ -425,7 +427,7 @@ export class CanvasPlayer {
         this.lastMeta = null;
       }
       (this as any)._nextMeta = undefined;
-    } catch {}
+    } catch { }
   }
 
   /* ---------- loop control ---------- */
