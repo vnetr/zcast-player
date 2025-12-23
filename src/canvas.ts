@@ -28,17 +28,18 @@ function parseResolution(res?: string): { w?: number; h?: number } {
 }
 
 function pickCanvasCfg(item: ManifestItem): CanvasCfg | null {
-  // Accept both flat and nested shapes
   const data = item?.data ?? item;
   const c = data?.canvas;
   if (!c || !c.id) return null;
 
   const loc = c.location || {};
   const res = parseResolution(c.resolution);
+
   const width = Number(res.w ?? 1920);
   const height = Number(res.h ?? 1080);
-  const x = Number(loc.x ?? 0);
-  const y = Number(loc.y ?? 0);
+
+  const x = Number(loc.x ?? c.x ?? 0);
+  const y = Number(loc.y ?? c.y ?? 0);
 
   return {
     id: String(c.id),
@@ -50,6 +51,7 @@ function pickCanvasCfg(item: ManifestItem): CanvasCfg | null {
     resolution: c.resolution,
   };
 }
+
 
 function cfgEquals(a: CanvasCfg, b: CanvasCfg): boolean {
   return (
