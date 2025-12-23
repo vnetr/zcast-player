@@ -1,6 +1,6 @@
 {
   "name": "zcast-player",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "ZCAST digital signage(Electron + Vite)",
   "type": "module",
   "main": "build/electron/main.js",
