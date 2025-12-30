@@ -226,6 +226,47 @@ function getArg(name: string): string | undefined {
   const hit = process.argv.find(a => a.startsWith(prefix));
   return hit ? hit.slice(prefix.length) : undefined;
 }
+
+function rotateArg(): string {
+  // supports: --rotate=inverted | --rotate=180 | --rotate=90 | --rotate=270 | --rotate=none
+  return (getArg('rotate') || process.env.ZCAST_ROTATE || 'none').toLowerCase();
+}
+
+function rotationCss(mode: string): string | null {
+  // Accept a few aliases
+  const m = mode.replace(/^--?/, '');
+  let deg: number | null = null;
+
+  if (m === 'none' || m === '0' || m === 'normal') deg = 0;
+  else if (m === 'inverted' || m === '180' || m === 'flip' || m === 'upsidedown') deg = 180;
+  else if (m === 'left' || m === '90') deg = 90;
+  else if (m === 'right' || m === '270') deg = 270;
+
+  if (deg === null || deg === 0) return null;
+
+  // Rotate the entire document and keep it centered.
+  // For 90/270, swap viewport dimensions by scaling to fit.
+  return `
+    html {
+      width: 100vw !important;
+      height: 100vh !important;
+      margin: 0 !important;
+      overflow: hidden !important;
+      transform-origin: center center !important;
+      transform: rotate(${deg}deg) !important;
+    }
+    body {
+      width: 100vw !important;
+      height: 100vh !important;
+      margin: 0 !important;
+      overflow: hidden !important;
+      background: #000 !important;
+    }
+  `;
+}
+
+
+
 function packagedFallbackManifest(): string | '' {
   return app.isPackaged ? path.join(process.resourcesPath, 'mock', 'manifest.json') : '';
 }
@@ -269,6 +310,24 @@ function createWindow() {
     const indexFile = prodIndexHtml();
     if (!indexFile) win.loadURL('data:text/html,<h1>Missing dist/index.html</h1>');
     else win.loadFile(indexFile);
+  }
+  const rot = rotateArg();
+  const css = rotationCss(rot);
+
+  if (css) {
+    const apply = async () => {
+      try {
+        await win?.webContents.insertCSS(css);
+        console.log('[zcast] applied rotate:', rot);
+      } catch (e) {
+        console.warn('[zcast] failed to apply rotate:', rot, e);
+      }
+    };
+
+    // Apply on first load and on any navigation/reload
+    win.webContents.on('did-finish-load', apply);
+    win.webContents.on('did-navigate', apply);
+    win.webContents.on('did-navigate-in-page', apply);
   }
 
   win.on('closed', () => (win = null));
