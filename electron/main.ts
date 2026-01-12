@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
 import chokidar from 'chokidar';
 import { execSync } from 'child_process';
-import { applyGpuProfile } from "./gpu/index";
+import { applyGpuProfile } from "./gpu/index.js";
 
 // =======================
 // Safety: never die on EPIPE / logging

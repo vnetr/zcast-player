@@ -1,6 +1,6 @@
 import type { App } from "electron";
-import { applyGpuProfile as applyNvidia } from "./profiles/nvidia";
-import { applyGpuProfile as applyIntel } from "./profiles/intel";
+import { applyGpuProfile as applyNvidia } from "./profiles/nvidia.js";
+import { applyGpuProfile as applyIntel } from "./profiles/intel.js";
 
 type Profile = "nvidia" | "intel";
 
