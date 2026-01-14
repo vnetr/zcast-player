@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
 import chokidar from 'chokidar';
 import { execSync } from 'child_process';
-import { applyGpuProfile } from "./gpu/index.js";
+
 
 // =======================
 // Safety: never die on EPIPE / logging
@@ -118,50 +118,75 @@ const WATCH_USE_POLL = /^(1|true|yes)$/i.test(String(process.env.ZCAST_MANIFEST_
 const WATCH_INTERVAL = Number(process.env.ZCAST_MANIFEST_WATCH_INTERVAL ?? 500);
 
 // -------- GPU / HW accel --------
-applyGpuProfile(app);
+const enableFeatures = new Set<string>([
+  'CanvasOopRasterization',
+  'VideoDecodeLinuxZeroCopyGL',
+]);
+
+const disableFeatures = new Set<string>();
+
+const hwDecodeMode = (process.env.ZCAST_HW_DECODE || 'auto').toLowerCase();
+// auto | vaapi | off
+
+function looksLikeNvidiaDisplay(): boolean {
+  // Cheap heuristic: if NVIDIA kernel driver is present, treat as NVIDIA display box
+  // (works for most of your fleet; hybrids can override via env)
+  try {
+    return fs.existsSync('/proc/driver/nvidia/version') ||
+      fs.existsSync('/dev/nvidia0');
+  } catch {
+    return false;
+  }
+}
+
+function hasVaapiPin(): boolean {
+  return !!process.env.LIBVA_DRIVER_NAME || !!process.env.LIBVA_DRM_DEVICE;
+}
+
+// VAAPI decision
+if (hwDecodeMode === 'vaapi') {
+  enableFeatures.add('VaapiVideoDecoder'); // DO NOT add IgnoreDriverChecks
+} else if (hwDecodeMode === 'off') {
+  disableFeatures.add('VaapiVideoDecoder');
+  disableFeatures.add('VaapiIgnoreDriverChecks');
+} else {
+  // auto:
+  // - if NVIDIA display, don't force VAAPI (prevents your 200% CPU thrash)
+  // - if user pinned VAAPI to a render node, allow it
+  if (!looksLikeNvidiaDisplay() || hasVaapiPin()) {
+    enableFeatures.add('VaapiVideoDecoder');
+  }
+}
+
+// Apply switches ONCE
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+
+app.commandLine.appendSwitch('enable-features', [...enableFeatures].join(','));
+if (disableFeatures.size) {
+  app.commandLine.appendSwitch('disable-features', [...disableFeatures].join(','));
+}
+
+// GL backend: portable choice
+app.commandLine.appendSwitch('ozone-platform-hint', 'x11');
+app.commandLine.appendSwitch('ozone-platform', 'x11'); // belt + suspenders
+
+// ---- GL backend: vendor-aware ----
+const forceGL = process.env.ZCAST_FORCE_USE_GL;
+const forceANGLE = process.env.ZCAST_FORCE_USE_ANGLE;
+const cliHasUseGl = process.argv.some(a => a.startsWith('--use-gl='));
+const cliHasUseAngle = process.argv.some(a => a.startsWith('--use-angle='));
+if (forceGL && !cliHasUseGl) {
+  app.commandLine.appendSwitch('use-gl', forceGL);
+}
+if (forceANGLE && !cliHasUseAngle) {
+  app.commandLine.appendSwitch('use-angle', forceANGLE);
+}
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 let win: BrowserWindow | null = null;
-let rendererReady = false;
-let pendingManifest: { json: any; why: string } | null = null;
-
-function canSendToRenderer(): boolean {
-  if (!win) return false;
-  if (win.isDestroyed()) return false;
-
-  const wc = win.webContents;
-  if (!wc || wc.isDestroyed()) return false;
-
-  // during reload/navigate the main frame can be disposed
-  if (wc.isLoading()) return false;
-
-  return rendererReady;
-}
-
-function flushPending() {
-  if (!pendingManifest) return;
-  if (!canSendToRenderer()) return;
-
-  const { json, why } = pendingManifest;
-  pendingManifest = null;
-
-  try {
-    win!.webContents.send('zcast:manifest-updated', json);
-    if (DEBUG_MAN) console.info(`[zcast] manifest broadcast (${why})`);
-  } catch (e) {
-    // raced a reload — keep it queued
-    pendingManifest = { json, why };
-    console.warn('[zcast] failed to send manifest (queued):', e);
-  }
-}
-
-function sendOrQueue(json: any, why: string) {
-  // keep only latest
-  pendingManifest = { json, why };
-  flushPending();
-}
-
 // Default TPM NV size (bytes). Can be overridden via env if needed.
 const TPM_NV_SIZE = Number(process.env.ZCAST_TPM_NV_SIZE || '1024');
 
@@ -170,7 +195,19 @@ function getArg(name: string): string | undefined {
   const hit = process.argv.find(a => a.startsWith(prefix));
   return hit ? hit.slice(prefix.length) : undefined;
 }
-
+function packagedFallbackManifest(): string | '' {
+  return app.isPackaged ? path.join(process.resourcesPath, 'mock', 'manifest.json') : '';
+}
+function manifestFilePath(): string {
+  return getArg('manifest-file') || process.env.ZCAST_MANIFEST_FILE || packagedFallbackManifest() || '';
+}
+function prodIndexHtml(): string | null {
+  const distIndex = path.resolve(__dirname, '../../dist/index.html');
+  if (fs.existsSync(distIndex)) return distIndex;
+  const legacy = path.resolve(__dirname, '../renderer/index.html');
+  if (fs.existsSync(legacy)) return legacy;
+  return null;
+}
 function rotateArg(): string {
   // supports: --rotate=inverted | --rotate=180 | --rotate=90 | --rotate=270 | --rotate=none
   return (getArg('rotate') || process.env.ZCAST_ROTATE || 'none').toLowerCase();
@@ -209,22 +246,6 @@ function rotationCss(mode: string): string | null {
   `;
 }
 
-
-
-function packagedFallbackManifest(): string | '' {
-  return app.isPackaged ? path.join(process.resourcesPath, 'mock', 'manifest.json') : '';
-}
-function manifestFilePath(): string {
-  return getArg('manifest-file') || process.env.ZCAST_MANIFEST_FILE || packagedFallbackManifest() || '';
-}
-function prodIndexHtml(): string | null {
-  const distIndex = path.resolve(__dirname, '../../dist/index.html');
-  if (fs.existsSync(distIndex)) return distIndex;
-  const legacy = path.resolve(__dirname, '../renderer/index.html');
-  if (fs.existsSync(legacy)) return legacy;
-  return null;
-}
-
 function createWindow() {
   win = new BrowserWindow({
     width: 1920,
@@ -239,21 +260,11 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       webgl: true,
       backgroundThrottling: false,
-      webSecurity: false,
-      allowRunningInsecureContent: true
+
+      // Signage-friendly security posture
+      webSecurity: false,               // allow scheme changes
+      allowRunningInsecureContent: true // http assets alongside file://
     },
-  });
-
-  // renderer lifecycle gates
-  rendererReady = false;
-
-  win.webContents.on('did-start-loading', () => {
-    rendererReady = false;
-  });
-
-  win.webContents.on('did-finish-load', () => {
-    rendererReady = true;
-    flushPending();
   });
 
   const dev = !!process.env.VITE_DEV;
@@ -265,7 +276,6 @@ function createWindow() {
     if (!indexFile) win.loadURL('data:text/html,<h1>Missing dist/index.html</h1>');
     else win.loadFile(indexFile);
   }
-
   const rot = rotateArg();
   const css = rotationCss(rot);
 
@@ -279,17 +289,14 @@ function createWindow() {
       }
     };
 
+    // Apply on first load and on any navigation/reload
     win.webContents.on('did-finish-load', apply);
     win.webContents.on('did-navigate', apply);
     win.webContents.on('did-navigate-in-page', apply);
   }
 
-  win.on('closed', () => {
-    rendererReady = false;
-    win = null;
-  });
+  win.on('closed', () => (win = null));
 }
-
 
 const mf = manifestFilePath();
 if (!mf) console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specified. Dev HMR only.');
@@ -607,7 +614,13 @@ app.whenReady().then(() => {
   }
 
   function sendToRenderer(json: any, why: string) {
-    sendOrQueue(json, why);
+    if (!win) return;
+    try {
+      win.webContents.send('zcast:manifest-updated', json);
+      if (DEBUG_MAN) console.info(`[zcast] manifest broadcast (${why})`);
+    } catch (e) {
+      console.warn('[zcast] failed to send manifest to renderer:', e);
+    }
   }
 
   async function maybeBroadcastFromDisk(file: string, why: string) {
@@ -687,7 +700,13 @@ app.whenReady().then(() => {
   createWindow();
   startWatch();
 
-
+  // If the renderer missed an event during boot, sync once after load.
+  const sendOnReady = () => {
+    if (win && lastManifestObject) {
+      sendToRenderer(lastManifestObject, 'renderer-ready');
+    }
+  };
+  win?.webContents.on('did-finish-load', sendOnReady);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
