@@ -52,7 +52,6 @@ function pickCanvasCfg(item: ManifestItem): CanvasCfg | null {
   };
 }
 
-
 function cfgEquals(a: CanvasCfg, b: CanvasCfg): boolean {
   return (
     a.id === b.id &&
@@ -97,6 +96,10 @@ export class CanvasPlayer {
   private lastStartAt: number | null = null; // ms epoch when item became visible
   private lastEventId: string | null = null; // upsert key used for 'started'
   private lastMeta: any = null;
+
+  // Blackout state: when schedule says "nothing active", force empty black canvas
+  private isBlack = false;
+
   constructor(root: HTMLElement, cfg: CanvasCfg) {
     this.root = root;
     this.cfg = cfg;
@@ -124,6 +127,7 @@ export class CanvasPlayer {
       overflow: "hidden",
       userSelect: "none",
       pointerEvents: "none", // render-only surface; events disabled
+      background: "black", // ✅ default black
     } as CSSStyleDeclaration);
 
     // A/B layers inside the canvas
@@ -145,15 +149,14 @@ export class CanvasPlayer {
 
   unmount() {
     this.stopLoop();
+
+    // Ensure renderers are fully stopped so nothing keeps drawing / playing audio
+    this.blackout("unmount");
+
     if (this.container?.parentElement) {
       this.container.parentElement.removeChild(this.container);
     }
-    try {
-      this.activePlayer?.stop?.();
-    } catch { }
-    try {
-      this.backPlayer?.stop?.();
-    } catch { }
+
     this.container =
       this.stageA =
       this.stageB =
@@ -195,6 +198,14 @@ export class CanvasPlayer {
     this.engine.updateManifest(filtered);
     this.manifestVersion++;
     this.stopLoop();
+
+    // ✅ If there are no items for this canvas at all, go black immediately.
+    if (filtered.length === 0) {
+      this.blackout("manifest-empty-for-canvas");
+      this.scheduleNext(1000); // keep evaluating periodically (or wait for next manifest push)
+      return;
+    }
+
     this.tick(this.manifestVersion);
   }
 
@@ -235,7 +246,7 @@ export class CanvasPlayer {
   private async waitReady(el: BaseRendererEl, timeoutMs = 6000) {
     try {
       await el.play();
-    } catch { }
+    } catch {}
 
     const rafSettled = new Promise<void>((resolve) => {
       let ticks = 0;
@@ -254,10 +265,97 @@ export class CanvasPlayer {
     ]);
   }
 
+  /* ---------- analytics helper: finish previous "started" item ---------- */
+  private finishLastEventIfAny() {
+    try {
+      if (this.lastEventId && this.lastStartAt) {
+        const durSec = Math.max(
+          0,
+          Math.floor((Date.now() - this.lastStartAt) / 1000)
+        );
+        const m = this.lastMeta || {};
+
+        const playerName =
+          m.player ||
+          m.deviceId ||
+          (typeof window !== "undefined" && (window as any).zcast?.deviceId) ||
+          m.canvasName ||
+          "UNKNOWN";
+
+        analytics.logEventCompleted({
+          event_id: this.lastEventId,
+          duration: durSec,
+          status: "completed",
+          player: playerName,
+          schedule: m.scheduleName,
+          media: m.mediaName,
+          customer: m.customer,
+          user_group: m.user_group,
+        });
+      }
+    } catch {}
+
+    this.lastStartAt = null;
+    this.lastEventId = null;
+    this.lastMeta = null;
+  }
+
+  /* ---------- blackout: force empty black surface (stop & remove renderers) ---------- */
+  private blackout(reason: string) {
+    this.mount();
+
+    // If already black, avoid repeated heavy cleanup.
+    if (this.isBlack) return;
+    this.isBlack = true;
+
+    console.info("[canvas] BLACK:", this.cfg.id, reason);
+
+    // Finish analytics session for whatever was visible.
+    this.finishLastEventIfAny();
+
+    const kill = (p: BaseRendererEl | null) => {
+      if (!p) return;
+      try {
+        p.pause?.();
+      } catch {}
+      try {
+        p.stop?.();
+      } catch {}
+      try {
+        if ((p as any).parentElement) {
+          (p as any).parentElement.removeChild(p as any);
+        }
+      } catch {}
+    };
+
+    // Stop/remove both visible & hidden renderers
+    kill(this.activePlayer);
+    kill(this.backPlayer);
+
+    // Clear stages fully and force black backgrounds
+    const clearStage = (st: HTMLDivElement) => {
+      try {
+        st.innerHTML = "";
+      } catch {}
+      try {
+        (st.style as any).background = "black";
+      } catch {}
+    };
+    if (this.activeStage) clearStage(this.activeStage);
+    if (this.backStage) clearStage(this.backStage);
+
+    // Reset renderer pointers so next item recreates cleanly
+    this.playerA = this.playerB = null;
+    this.activePlayer = this.backPlayer = null;
+    this.activeKind = this.backKind = null;
+
+    // Reset "lastGood" so next render will proceed
+    this.lastGood = null;
+  }
+
   /* ---------- ensure the back layer has the right element ---------- */
   private async ensureBackRenderer(kind: RendererKind, doc: any) {
-    // If playlist is requested, guarantee <layout-renderer> is already defined,
-    // because playlist will create and control it internally.
+    // Ensure custom elements are defined
     if (kind === "playlist") {
       await loadRenderer("layout");
       await customElements.whenDefined("layout-renderer");
@@ -275,10 +373,10 @@ export class CanvasPlayer {
       if (this.backPlayer?.parentElement) {
         try {
           this.backPlayer.pause?.();
-        } catch { }
+        } catch {}
         try {
           this.backPlayer.stop?.();
-        } catch { }
+        } catch {}
         this.backPlayer.parentElement.removeChild(this.backPlayer);
       }
 
@@ -296,7 +394,7 @@ export class CanvasPlayer {
       try {
         (el as any).frameRate =
           this.cfg.frameRate ?? (el as any).frameRate ?? 30;
-      } catch { }
+      } catch {}
 
       this.backStage.appendChild(el);
 
@@ -320,17 +418,17 @@ export class CanvasPlayer {
 
     try {
       await this.backPlayer?.stop?.();
-    } catch { }
+    } catch {}
 
     await this.waitLoaded(
       this.backPlayer as unknown as HTMLElement,
       kind
-    ).catch(() => { });
+    ).catch(() => {});
     try {
       await this.backPlayer?.play?.();
-    } catch { }
+    } catch {}
 
-    await this.waitReady(this.backPlayer!).catch(() => { });
+    await this.waitReady(this.backPlayer!).catch(() => {});
   }
 
   /* ---------- atomic swap ---------- */
@@ -361,7 +459,7 @@ export class CanvasPlayer {
           user_group: m.user_group,
         });
       }
-    } catch { }
+    } catch {}
 
     this.activeStage.classList.remove("visible");
     this.activeStage.classList.add("hidden");
@@ -379,17 +477,17 @@ export class CanvasPlayer {
     // Ensure the now-visible player is actually playing
     try {
       await this.activePlayer?.play?.();
-    } catch { }
+    } catch {}
     requestAnimationFrame(async () => {
       try {
         await this.activePlayer?.play?.();
-      } catch { }
+      } catch {}
     });
 
     // Quiet the hidden one
     try {
       this.backPlayer?.pause?.();
-    } catch { }
+    } catch {}
     try {
       const meta: any = (this as any)._nextMeta;
       if (meta && meta.kind && meta.id) {
@@ -400,11 +498,7 @@ export class CanvasPlayer {
           meta.canvasName ||
           "UNKNOWN";
 
-        const eid = makeEventId(
-          String(playerName),
-          String(meta.id),
-          Date.now()
-        );
+        const eid = makeEventId(String(playerName), String(meta.id), Date.now());
 
         analytics.logEventStart({
           event_id: eid,
@@ -427,7 +521,7 @@ export class CanvasPlayer {
         this.lastMeta = null;
       }
       (this as any)._nextMeta = undefined;
-    } catch { }
+    } catch {}
   }
 
   /* ---------- loop control ---------- */
@@ -477,9 +571,14 @@ export class CanvasPlayer {
     if (versionAtStart !== this.manifestVersion) return;
 
     if (!item) {
+      // ✅ Nothing active right now => force black + remove old content
+      this.blackout("no-active-now");
       this.scheduleNext(Math.min(1000, Math.max(250, tickMs)));
       return;
     }
+
+    // We have content => leave black mode
+    this.isBlack = false;
 
     const next = this.resolveNextFromEngineItem(item);
 
@@ -536,6 +635,11 @@ export class CanvasManager {
 
   constructor(root: HTMLElement) {
     this.root = root;
+
+    // ✅ Global fallback: if no canvases exist, root stays black
+    try {
+      this.root.style.background = "black";
+    } catch {}
   }
 
   applyManifest(manifest: any) {
