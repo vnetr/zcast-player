@@ -29,7 +29,12 @@ type EventRow = {
     timestamp?: string; // ISO
     player?: string;
     schedule?: string;
-    media?: string;
+
+    // Top-level "thing" playing (layout or playlist)
+    media?: string;          // UUID
+    media_name?: string;     // Display name
+    media_type?: "layout" | "playlist" | string;
+
     duration?: number; // seconds
     status?: "started" | "completed" | string;
     customer?: string;
@@ -55,11 +60,15 @@ type SOVRow = {
 type ContentRow = {
   kind: "content";
   data: {
-    content_id: string; // "<MEDIA>__YYYY-MM-DD"
-    media?: string;
-    type?: string;
-    play_count?: number;
-    total_duration?: number;
+    content_id: string; // "<MEDIA_UUID>__YYYY-MM-DD"
+
+    // Keep existing keys so frontend can still read them
+    media: string;                 // UUID (top-level id)
+    type: "layout" | "playlist";   // top-level type for UI filter
+    media_name?: string;           // display name
+
+    play_count: number;
+    total_duration: number;
     customer?: string;
     campaign?: string;
     [k: string]: any;
@@ -70,7 +79,12 @@ type Row = EventRow | SOVRow | ContentRow;
 
 type PlaybackSample = {
   player?: string;
-  media?: string;
+
+  // Top-level identity
+  media?: string; // UUID
+  media_name?: string;
+  media_type?: "layout" | "playlist" | string;
+
   duration?: number; // seconds
   customer?: string;
   timestamp?: string; // ISO
@@ -87,8 +101,9 @@ type ShareOfVoiceData = {
 
 type ContentAggData = {
   content_id: string;
-  media: string;
-  type?: string;
+  media: string;               // UUID
+  type: "layout" | "playlist"; // top-level type
+  media_name?: string;         // display name
   play_count: number;
   total_duration: number;
   customer?: string;
@@ -156,8 +171,8 @@ class AnalyticsClient {
       "[analytics] enqueue",
       row.kind,
       (row as any).data?.event_id ||
-        (row as any).data?.sov_id ||
-        (row as any).data?.content_id
+      (row as any).data?.sov_id ||
+      (row as any).data?.content_id
     );
 
     this.queue.push({ row, tries: 0 });
@@ -203,11 +218,13 @@ class AnalyticsClient {
 
     this.enqueue(row);
 
-    // Feed aggregates (best-effort)
+    // Feed aggregates (top-level only)
     try {
       this.recordPlaybackSample({
         player: row.data.player,
         media: row.data.media,
+        media_name: row.data.media_name,
+        media_type: row.data.media_type,
         duration: row.data.duration,
         customer: row.data.customer,
         timestamp: row.data.timestamp,
@@ -407,7 +424,7 @@ class AnalyticsClient {
 
     const { key: dayKey, start, end } = this.dayKeyAndBounds(sample.timestamp);
 
-    // Share of Voice
+    // Share of Voice (unchanged)
     const sovId = `${player}__${dayKey}`;
     const prevSov = this.sovAgg.get(sovId);
     const sov: ShareOfVoiceData =
@@ -423,15 +440,22 @@ class AnalyticsClient {
     sov.total_playtime += duration;
     this.sovAgg.set(sovId, sov);
 
-    // Content aggregation
+    // Content aggregation (TOP LEVEL ONLY)
     if (sample.media) {
+      const mediaType =
+        (sample.media_type === "playlist" ? "playlist" : "layout") as
+        | "layout"
+        | "playlist";
+
       const contentId = `${sample.media}__${dayKey}`;
       const prevContent = this.contentAgg.get(contentId);
+
       const content: ContentAggData =
         prevContent || {
           content_id: contentId,
           media: sample.media,
-          type: "layout", // default; adjust later if needed
+          type: mediaType,
+          media_name: sample.media_name,
           play_count: 0,
           total_duration: 0,
           customer: sample.customer || this.defaults.customer,
@@ -439,6 +463,11 @@ class AnalyticsClient {
 
       content.play_count += 1;
       content.total_duration += duration;
+
+      // Keep latest known name/type if it arrives later
+      if (sample.media_name) content.media_name = sample.media_name;
+      content.type = mediaType;
+
       this.contentAgg.set(contentId, content);
     }
 
