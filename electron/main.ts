@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as url from 'url';
 import { fileURLToPath } from 'url';
-import { createHash } from 'crypto';
+import { createHash, scryptSync, createDecipheriv } from 'crypto';
 import chokidar from 'chokidar';
 import { execSync } from 'child_process';
 
@@ -78,22 +78,63 @@ function sanitizeNvValue(raw: string | Buffer): string {
   return cleaned.split(/\s+/)[0];
 }
 
+type EncCreds = { apiKey?: string; zcastUrl?: string; deviceId?: string };
+function loadConfigFromEncFile(): EncCreds | null {
+  // hard-coded “user always zignage”
+  const p = '/home/zignage/.zignage-rmm-agent/credentials.enc';
 
-function loadConfigFromTpm() {
-  // Convention from your teammate:
-  // NV index 2 → API base URL
-  // NV index 3 → deviceId
-  const apiBase = readTpmNv(2);
-  const deviceId = readTpmNv(3);
+  try {
+    if (!fs.existsSync(p)) return null;
+
+    const enc = fs.readFileSync(p, 'utf8').trim();
+    const [ivHex, encryptedHex] = enc.split(':');
+    if (!ivHex || !encryptedHex) return null;
+
+    // Must match your existing encryption scheme exactly:
+    // key = scryptSync(platform() + USER, 'salt', 32)
+    const key = scryptSync('linux' + 'zignage', 'salt', 32);
+
+    const iv = Buffer.from(ivHex, 'hex');
+    const decipher = createDecipheriv('aes-256-cbc', key, iv);
+
+    let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    const obj = JSON.parse(decrypted) as EncCreds;
+    return obj;
+  } catch (e) {
+    console.warn('[zcast] Failed to decrypt local credentials.enc:', (e as any)?.message || e);
+    return null;
+  }
+}
+
+function loadConfigFromTpmOrFile() {
+  // 1) TPM (your current behavior)
+  const apiBaseFromTpm = readTpmNv(2);
+  const deviceIdFromTpm = readTpmNv(3);
+  // if you also store apiKey in TPM, read it here too
+
+  // 2) If anything missing, read encrypted file
+  const fromFile = (!apiBaseFromTpm || !deviceIdFromTpm) ? loadConfigFromEncFile() : null;
+
+  const apiBase = apiBaseFromTpm || fromFile?.zcastUrl;
+  const deviceId = deviceIdFromTpm || fromFile?.deviceId;
+  const apiKey   = fromFile?.apiKey; // your main.ts currently doesn’t set this, but you probably want it
 
   if (apiBase && !process.env.ZCAST_API_BASE) {
     process.env.ZCAST_API_BASE = apiBase;
-    console.log('[zcast] ZCAST_API_BASE loaded from TPM:', apiBase);
+    console.log('[zcast] ZCAST_API_BASE loaded from', apiBaseFromTpm ? 'TPM' : 'credentials.enc');
   }
 
   if (deviceId && !process.env.ZCAST_DEVICE_ID) {
     process.env.ZCAST_DEVICE_ID = deviceId;
-    console.log('[zcast] ZCAST_DEVICE_ID loaded from TPM:', deviceId);
+    console.log('[zcast] ZCAST_DEVICE_ID loaded from', deviceIdFromTpm ? 'TPM' : 'credentials.enc');
+  }
+
+  // If your renderer / websocket needs api key via env:
+  if (apiKey && !process.env.ZCAST_API_KEY) {
+    process.env.ZCAST_API_KEY = apiKey;
+    console.log('[zcast] ZCAST_API_KEY loaded from credentials.enc');
   }
 }
 
@@ -300,7 +341,9 @@ function createWindow() {
 
 const mf = manifestFilePath();
 if (!mf) console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specified. Dev HMR only.');
-loadConfigFromTpm();
+
+loadConfigFromTpmOrFile();
+
 app.whenReady().then(() => {
   // ---- paths ----
   const distIndex = prodIndexHtml();                            // /opt/.../app.asar/dist/index.html
@@ -480,12 +523,16 @@ app.whenReady().then(() => {
   // ============================
   // (A) http(s) → local hashed cache (unchanged)
   // ============================
+  const FONT_EXT = /\.(woff2?|ttf|otf)(\?.*)?$/i;
   session.defaultSession.webRequest.onBeforeRequest(
-    { urls: ['http://*/*', 'https://*/*'] },
-    (details, callback) => {
-      const local = mapRemoteToLocal(details.url);
-      if (local) return callback({ redirectURL: toFileUrl(local) });
-      return callback({});
+    { urls: ['*://*/*', 'file://*/*'] },
+    (details, cb) => {
+      try {
+        if (FONT_EXT.test(details.url)) {
+          console.log('[FONT REQ]', details.resourceType, details.url);
+        }
+      } catch { }
+      cb({});
     }
   );
 
