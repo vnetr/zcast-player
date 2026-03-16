@@ -119,7 +119,7 @@ function loadConfigFromTpmOrFile() {
 
   const apiBase = apiBaseFromTpm || fromFile?.zcastUrl;
   const deviceId = deviceIdFromTpm || fromFile?.deviceId;
-  const apiKey   = fromFile?.apiKey; // your main.ts currently doesn’t set this, but you probably want it
+  const apiKey = fromFile?.apiKey; // your main.ts currently doesn’t set this, but you probably want it
 
   if (apiBase && !process.env.ZCAST_API_BASE) {
     process.env.ZCAST_API_BASE = apiBase;
@@ -199,10 +199,40 @@ if (hwDecodeMode === 'vaapi') {
   }
 }
 
+// -------- Performance / signage hardening --------
+const RAM_GB = 64;
+
+// V8 heap for renderer/main JS.
+// 8192 MB is aggressive but reasonable on a 64 GB signage box.
+const V8_OLD_SPACE_MB = Number(process.env.ZCAST_V8_OLD_SPACE_MB || '8192');
+
+// Disk cache: 1 GB by default for heavy asset usage.
+const DISK_CACHE_SIZE = Number(process.env.ZCAST_DISK_CACHE_SIZE || String(1024 * 1024 * 1024));
+
+// Optional "dangerous" GPU flags only for troubleshooting.
+// Chromium marks some of these as test-oriented; keep OFF by default.
+const ALLOW_UNSAFE_GPU_FLAGS = /^(1|true|yes)$/i.test(String(process.env.ZCAST_UNSAFE_GPU_FLAGS || ''));
+
+
 // Apply switches ONCE
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
+
+// Disable all the throttling/limits that hurt signage playback
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backing-store-limit');
+
+// Give Chromium more room for cached content
+app.commandLine.appendSwitch('disk-cache-size', String(DISK_CACHE_SIZE));
+
+// Raise JS heap ceilings
+app.commandLine.appendSwitch(
+  'js-flags',
+  `--max-old-space-size=${V8_OLD_SPACE_MB} --max-semi-space-size=256`
+);
 
 app.commandLine.appendSwitch('enable-features', [...enableFeatures].join(','));
 if (disableFeatures.size) {
@@ -226,7 +256,10 @@ if (forceANGLE && !cliHasUseAngle) {
 }
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
-
+if (ALLOW_UNSAFE_GPU_FLAGS) {
+  app.commandLine.appendSwitch('disable-gpu-watchdog');
+  app.commandLine.appendSwitch('disable-gpu-process-crash-limit');
+}
 let win: BrowserWindow | null = null;
 // Default TPM NV size (bytes). Can be overridden via env if needed.
 const TPM_NV_SIZE = Number(process.env.ZCAST_TPM_NV_SIZE || '1024');
@@ -304,8 +337,15 @@ function createWindow() {
 
       // Signage-friendly security posture
       webSecurity: false,               // allow scheme changes
-      allowRunningInsecureContent: true // http assets alongside file://
+      allowRunningInsecureContent: true, // http assets alongside file://
+      spellcheck: false,
+      navigateOnDragDrop: false,
+      disableDialogs: true,
+
+      // Better startup/runtime code caching behavior
+      v8CacheOptions: 'bypassHeatCheck',
     },
+
   });
 
   const dev = !!process.env.VITE_DEV;
@@ -329,7 +369,7 @@ function createWindow() {
         console.warn('[zcast] failed to apply rotate:', rot, e);
       }
     };
-
+    win.webContents.setBackgroundThrottling(false);
     // Apply on first load and on any navigation/reload
     win.webContents.on('did-finish-load', apply);
     win.webContents.on('did-navigate', apply);
