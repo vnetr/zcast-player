@@ -218,6 +218,8 @@ const ALLOW_UNSAFE_GPU_FLAGS = /^(1|true|yes)$/i.test(String(process.env.ZCAST_U
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('enable-accelerated-video-decode');
+app.commandLine.appendSwitch('enable-oop-rasterization');
 
 // Disable all the throttling/limits that hurt signage playback
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
