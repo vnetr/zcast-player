@@ -1,287 +1,1348 @@
 [
   {
-    "doc_uuid": "762af9f2-8714-4d8f-8514-9f4ce64fd7e9",
+    "doc_uuid": "17399479-6fde-4013-9794-858719d12b8f",
     "schedule_group": null,
     "data": {
-      "days": [],
-      "name": "New Schedule - Test05",
+      "days": [
+        {
+          "day": "mo",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "tu",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "we",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "th",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "fr",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "sa",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "su",
+          "nthOfPeriod": 1
+        }
+      ],
+      "name": "New Schedule - Test1",
       "type": "layout",
       "group": "Default Group",
       "media": {
-        "id": "faff2520-c88b-43b3-b630-0548ee826b1c",
-        "name": "Test05",
+        "id": "a45d591d-773f-4704-962d-d3086ab5a063",
+        "name": "Test1",
         "tags": [],
         "type": "layout",
-        "props": { "width": 1024, "height": 1440, "background": "#000000" },
+        "props": {
+          "width": 3840,
+          "height": 1620,
+          "background": "#ff0000"
+        },
         "status": "ffffffff-ffff-ffff-ffff-fffffffffffe",
         "options": {
-          "end": 31111,
+          "end": 0,
+          "grid": {
+            "color": "#ffffff",
+            "opacity": 0.3,
+            "visible": false,
+            "lineWidth": 1,
+            "rowHeight": 32,
+            "columnWidth": 32,
+            "snapToLines": false,
+            "snapThreshold": 0.05
+          },
           "start": 0,
           "locked": false,
+          "snapTo": "none",
           "visible": true,
-          "duration": 31111,
+          "duration": 0,
           "selected": false
         },
-        "parents": ["13290f45-9fb5-4c37-b6c0-55e22a625d5f"],
         "version": 1,
-        "children": [
-          {
-            "id": "595f60d0-5d0c-41a4-bf01-2ad203a600fb",
-            "name": "CMS Promotional.mp4",
-            "open": false,
-            "type": "video",
-            "props": {
-              "x": -120,
-              "y": 0,
-              "clip": { "top": 0, "left": 0, "right": 0, "bottom": 0 },
-              "width": 1152,
-              "border": {
-                "radius": 0,
-                "lineColor": "transparent",
-                "lineStyle": "solid",
-                "lineWidth": 0
-              },
-              "height": 1440,
-              "filters": {},
-              "opacity": 1,
-              "transform": {
-                "skew": { "x": 0, "y": 0 },
-                "scale": { "x": 100, "y": 100 },
-                "rotate": 0
-              },
-              "background": "transparent"
-            },
-            "content": {
-              "src": "http://kraken.zignage.com/media/mediaAsset/originals/CMS_Promotional.mp4",
-              "mark-in": 0,
-              "mark-out": 0,
-              "playback-mode": "loop"
-            },
-            "options": {
-              "end": 31111,
-              "start": 0,
-              "locked": false,
-              "visible": true,
-              "selected": false
-            }
-          },
-          {
-            "id": "1d718d93-6d5b-429d-9654-72285fa0516a",
-            "name": "spine.svg",
-            "open": false,
-            "type": "image",
-            "props": {
-              "x": [
-                { "value": 0, "easing": "linear", "timestamp": 0 },
-                { "value": 0, "easing": "linear", "timestamp": 1500 },
-                { "value": -214, "easing": "linear", "timestamp": 2000 },
-                { "value": -214, "easing": "linear", "timestamp": 30611 },
-                { "value": 0, "easing": "linear", "timestamp": 31111 }
-              ],
-              "y": 0,
-              "clip": { "top": 0, "left": 0, "right": 0, "bottom": 0 },
-              "width": 214,
-              "border": {
-                "radius": 0,
-                "lineColor": "transparent",
-                "lineStyle": "solid",
-                "lineWidth": 0
-              },
-              "height": 1440,
-              "filters": {},
-              "opacity": 1,
-              "transform": {
-                "skew": { "x": 0, "y": 0 },
-                "scale": { "x": 100, "y": 100 },
-                "rotate": 0
-              },
-              "background": "transparent"
-            },
-            "content": {
-              "src": "http://kraken.zignage.com/media/mediaAsset/originals/spine.svg",
-              "fillMode": "contain"
-            },
-            "options": {
-              "end": 31111,
-              "start": 0,
-              "locked": false,
-              "visible": true,
-              "selected": false
-            }
-          },
-          {
-            "id": "9be22776-23e0-40db-8ea4-34da2dbcb28c",
-            "name": "CMS_Logo_1Lline.svg",
-            "open": false,
-            "type": "image",
-            "props": {
-              "x": -190,
-              "y": 290,
-              "clip": { "top": 0, "left": 0, "right": 0, "bottom": 0 },
-              "width": 576,
-              "border": {
-                "radius": 0,
-                "lineColor": "transparent",
-                "lineStyle": "solid",
-                "lineWidth": 0
-              },
-              "height": 104,
-              "filters": {},
-              "opacity": [
-                { "value": 1, "easing": "linear", "timestamp": 0 },
-                { "value": 1, "easing": "linear", "timestamp": 500 },
-                { "value": 0, "easing": "linear", "timestamp": 1000 },
-                { "value": 0, "easing": "linear", "timestamp": 29911 },
-                { "value": 1, "easing": "linear", "timestamp": 30611 },
-                { "value": 1, "easing": "linear", "timestamp": 31111 }
-              ],
-              "transform": {
-                "skew": { "x": 0, "y": 0 },
-                "scale": { "x": 100, "y": 100 },
-                "rotate": 90
-              },
-              "background": "transparent"
-            },
-            "content": {
-              "src": "http://kraken.zignage.com/media/mediaAsset/originals/CMS_Logo_1Lline.svg",
-              "fillMode": "contain"
-            },
-            "options": {
-              "end": 31111,
-              "start": 0,
-              "locked": false,
-              "visible": true,
-              "selected": false
-            }
-          },
-          {
-            "id": "80e3c4ba-a830-443f-97d7-41222558e8f3",
-            "name": "1200px-QR_Code_Example.svg.png",
-            "type": "image",
-            "props": {
-              "x": 863.890380859375,
-              "y": 839.7342681884766,
-              "clip": { "top": 0, "left": 0, "right": 0, "bottom": 0 },
-              "width": 160,
-              "border": {
-                "radius": 0,
-                "lineColor": "transparent",
-                "lineStyle": "solid",
-                "lineWidth": 0
-              },
-              "height": 160,
-              "filters": {},
-              "opacity": [
-                { "value": 0, "easing": "linear", "timestamp": 0 },
-                { "value": 0, "easing": "linear", "timestamp": 5600 },
-                { "value": 1, "easing": "linear", "timestamp": 6100 },
-                { "value": 1, "easing": "linear", "timestamp": 30611 },
-                { "value": 0, "easing": "linear", "timestamp": 31111 }
-              ],
-              "transform": {
-                "skew": { "x": 0, "y": 0 },
-                "scale": { "x": 100, "y": 100 },
-                "rotate": 0
-              },
-              "background": "#ffffff"
-            },
-            "content": {
-              "src": "http://kraken.zignage.com/media/mediaAsset/originals/1200px-QR_Code_Example.svg.png",
-              "fillMode": "contain"
-            },
-            "options": {
-              "end": 31111,
-              "start": 0,
-              "locked": false,
-              "visible": true,
-              "selected": false
-            }
-          }
-        ],
-        "editorData": { "currentTimestamp": 20400 },
-        "isNestedLayout": true
+        "children": [],
+        "editorData": {
+          "currentTimestamp": 0
+        },
+        "_isHydrated": true,
+        "isNestedLayout": false
       },
       "canvas": {
-        "id": "b6556ff1-5ecd-4e7e-a2eb-46554b17b242",
-        "name": "Test",
-        "location": { "x": 100, "y": 0, "width": 1920, "height": 1080 },
+        "x": 0,
+        "y": 0,
+        "id": "9aefd0e2-214f-4045-9f15-87ac1526eee6",
+        "name": "Lab Test display",
         "frameRate": 24,
-        "resolution": "5200x2160",
-        "aspectRatio": "65:27"
+        "resolution": "1920x1080",
+        "aspectRatio": "16:9"
       },
       "player": "default",
       "status": "ffffffff-ffff-ffff-ffff-fffffffffffe",
       "toTime": "23:59:59.000",
-      "weekend": false,
-      "canvasId": "b6556ff1-5ecd-4e7e-a2eb-46554b17b242",
-      "deviceId": "45f254bf-8aaf-484d-ac96-b86ea9bb6f43",
-      "expireAt": "2025-11-10T13:30:00.000Z",
+      "weekend": true,
+      "canvasId": "9aefd0e2-214f-4045-9f15-87ac1526eee6",
+      "deviceId": "95890a4c-f8ae-43b0-a75b-831c9db0649b",
+      "expireAt": "",
       "fromTime": "00:00:00.000",
-      "inceptAt": "2025-11-04T00:00:40.169Z",
-      "layoutId": "faff2520-c88b-43b3-b630-0548ee826b1c",
-      "priority": 2,
+      "inceptAt": "2026-03-22T04:00:00.000Z",
+      "layoutId": "a45d591d-773f-4704-962d-d3086ab5a063",
+      "priority": 1,
       "inceptNow": true,
       "expireNever": true,
-      "workingDays": false,
-      "scheduleName": "New Schedule - Test05"
+      "workingDays": true,
+      "scheduleName": "New Schedule - Test1",
+      "playContinuously": true
     },
-    "created": "2025-11-04T17:09:45.468178+00:00",
-    "modified": "2025-11-04T17:09:49.272166+00:00"
+    "created": "2026-03-22T14:20:20.847676+00:00",
+    "modified": "2026-03-22T14:20:42.899420+00:00"
   },
   {
-    "doc_uuid": "95f40d9e-b69d-4123-b69f-843d81d1fa4e",
+    "doc_uuid": "e87cf8b8-1a72-465f-a55c-ba094bac46b2",
     "schedule_group": null,
     "data": {
       "days": [
-        { "day": "mo", "nthOfPeriod": 1 },
-        { "day": "tu", "nthOfPeriod": 1 },
-        { "day": "we", "nthOfPeriod": 1 },
-        { "day": "th", "nthOfPeriod": 1 },
-        { "day": "fr", "nthOfPeriod": 1 },
-        { "day": "sa", "nthOfPeriod": 1 },
-        { "day": "su", "nthOfPeriod": 1 }
+        {
+          "day": "mo",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "tu",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "we",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "th",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "fr",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "sa",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "su",
+          "nthOfPeriod": 1
+        }
       ],
-      "name": "New Schedule - Hello World",
+      "name": "New Schedule - Test2",
       "type": "layout",
       "group": "Default Group",
       "media": {
-        "id": "9cce2e64-f89b-4ba0-8c3b-c7f64e4deea9",
-        "name": "Hello World",
+        "id": "7248fcda-a00e-4f6c-b1be-b75c157c9bf8",
+        "name": "Test2",
         "tags": [],
         "type": "layout",
-        "props": { "width": 1920, "height": 1080, "background": "#000000" },
+        "props": {
+          "width": 3840,
+          "height": 1620,
+          "background": "#2b00ff"
+        },
+        "status": "ffffffff-ffff-ffff-ffff-fffffffffffe",
+        "options": {
+          "end": 0,
+          "grid": {
+            "color": "#ffffff",
+            "opacity": 0.3,
+            "visible": false,
+            "lineWidth": 1,
+            "rowHeight": 32,
+            "columnWidth": 32,
+            "snapToLines": false,
+            "snapThreshold": 0.05
+          },
+          "start": 0,
+          "locked": false,
+          "snapTo": "none",
+          "visible": true,
+          "duration": 0,
+          "selected": false
+        },
+        "version": 1,
+        "children": [],
+        "editorData": {
+          "currentTimestamp": 0
+        },
+        "_isHydrated": true,
+        "isNestedLayout": false
+      },
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "id": "9aefd0e2-214f-4045-9f15-87ac1526eee6",
+        "name": "Lab Test display",
+        "frameRate": 24,
+        "resolution": "1920x1080",
+        "aspectRatio": "16:9"
+      },
+      "player": "default",
+      "status": "ffffffff-ffff-ffff-ffff-fffffffffffe",
+      "toTime": "23:59:59.000",
+      "weekend": true,
+      "canvasId": "9aefd0e2-214f-4045-9f15-87ac1526eee6",
+      "deviceId": "95890a4c-f8ae-43b0-a75b-831c9db0649b",
+      "expireAt": "",
+      "fromTime": "00:00:00.000",
+      "inceptAt": "2026-03-22T04:00:00.000Z",
+      "layoutId": "7248fcda-a00e-4f6c-b1be-b75c157c9bf8",
+      "priority": 4,
+      "inceptNow": true,
+      "expireNever": true,
+      "workingDays": true,
+      "scheduleName": "New Schedule - Test2",
+      "playContinuously": true
+    },
+    "created": "2026-03-22T14:20:46.746419+00:00",
+    "modified": "2026-03-22T14:21:17.465195+00:00"
+  },
+  {
+    "doc_uuid": "ce95f972-a40a-40dc-a658-92585d4caa87",
+    "schedule_group": null,
+    "data": {
+      "days": [
+        {
+          "day": "mo",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "tu",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "we",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "th",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "fr",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "sa",
+          "nthOfPeriod": 1
+        },
+        {
+          "day": "su",
+          "nthOfPeriod": 1
+        }
+      ],
+      "name": "New Schedule - B2B North & South",
+      "type": "layout",
+      "group": "Default Group",
+      "media": {
+        "id": "6b644e2d-8c16-4cce-a266-4f8dca93b6c2",
+        "name": "B2B North & South",
+        "tags": [],
+        "type": "layout",
+        "props": {
+          "width": 10866,
+          "height": 2160,
+          "background": "#000000"
+        },
         "status": "ffffffff-ffff-ffff-ffff-fffffffffffe",
         "options": {
           "end": 0,
           "start": 0,
           "locked": false,
           "visible": true,
-          "duration": 0,
+          "duration": 89798,
           "selected": false
         },
         "version": 1,
         "children": [
           {
-            "id": "67648a68-291e-4f5e-9f7d-0c1b03d0e80f",
-            "name": "Text",
-            "type": "text",
+            "id": "082f2be9-99cb-499a-aaf8-03b64666667c",
+            "name": "N20240304-B2B_BG-GRADIENT.png",
+            "open": false,
+            "type": "image",
             "props": {
-              "x": 249,
-              "y": 307,
-              "clip": { "top": 0, "left": 0, "right": 0, "bottom": 0 },
-              "width": 1347,
+              "x": 0,
+              "y": 0,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 10866,
               "border": {
                 "radius": 0,
                 "lineColor": "transparent",
                 "lineStyle": "solid",
                 "lineWidth": 0
               },
-              "height": 553,
+              "height": 1080,
               "filters": {},
               "opacity": 1,
               "transform": {
-                "skew": { "x": 0, "y": 0 },
-                "scale": { "x": 100, "y": 100 },
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/20240304-B2B_BG-GRADIENT.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "543c2d30-4009-4a29-996e-cdfce947988c",
+            "name": "S20240304-B2B_BG-GRADIENT.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 0,
+              "y": 1080,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 10866,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/20240304-B2B_BG-GRADIENT.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "0b4f6c22-be9a-4594-85d7-5b31cb6266eb",
+            "name": "NB2B_Brand_Value_Story_Video_3252k_vp9.webm",
+            "open": false,
+            "type": "video",
+            "props": {
+              "x": 8946,
+              "y": 0,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1920,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/B2B_Brand_Value_Story_Video_3252k_vp9_Q2m6s0W.webm",
+              "volume": 1,
+              "mark-in": 0,
+              "mark-out": 0,
+              "playback-mode": "loop"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "a58fee83-5377-4e52-92dc-6aa0b1fbece2",
+            "name": "SB2B_Brand_Value_Story_Video_3252k_vp9.webm",
+            "open": false,
+            "type": "video",
+            "props": {
+              "x": 8946,
+              "y": 1080,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1920,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/B2B_Brand_Value_Story_Video_3252k_vp9_Q2m6s0W.webm",
+              "volume": 1,
+              "mark-in": 0,
+              "mark-out": 0,
+              "playback-mode": "loop"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "36265893-9919-4a40-8d50-cf22efd9b9fd",
+            "name": "N00_Intro_Center_quotation_2.svg",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 7430,
+              "y": 670,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 231,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 183,
+              "filters": {},
+              "opacity": [
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 15407.837914734095
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 17071.993561085896
+                }
+              ],
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/00_Intro_Center_quotation_2.svg",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89398,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "becef53e-104b-41ad-8eb7-cae6c8e6de18",
+            "name": "N00_Intro_Center_quotation_1.svg",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 3260,
+              "y": 310,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 231,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 183,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/00_Intro_Center_quotation_1.svg",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "e4cfa7ba-216f-43aa-8113-9544ac5a8558",
+            "name": "S00_Intro_Center_quotation_2.svg",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 7430,
+              "y": 1750,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 231,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 183,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/00_Intro_Center_quotation_2.svg",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "109b20a5-40bd-42e3-a5a1-958bb118db1d",
+            "name": "S00_Intro_Center_quotation_1.svg",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 3260,
+              "y": 1390,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 231,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 183,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/00_Intro_Center_quotation_1.svg",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "1298cd0d-2edd-4e04-b918-c2320ead74a1",
+            "name": "N-Left – B2B Brand_5 – 9.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 0,
+              "y": 0,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1920,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": [
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 40833.3333333333
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 41054.666666666635
+                }
+              ],
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/Left__B2B_Brand_5__9.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "a97ecbeb-40dc-45cb-bf49-63ebab84b94c",
+            "name": "N-Left – B2B Brand_5 – 8.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 0,
+              "y": 0,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1920,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": [
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 32800.00000000001
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 32988.00000000001
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 63921
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 64092
+                }
+              ],
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/Left__B2B_Brand_5__8.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "d977af36-882d-4ff4-bda5-9e842c405f37",
+            "name": "N-Left – B2B Brand_5 – 21.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 0,
+              "y": 0,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1920,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": [
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 24966.66666666667
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 25154.66666666667
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 55624
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 55929
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 64103
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 64532
+                }
+              ],
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/Left__B2B_Brand_5__21.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "b0c24107-2baa-451c-8c3c-885e58fd671c",
+            "name": "N-Left – B2B Brand_5 – 20.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 0,
+              "y": 0,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1920,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": [
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 17700
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 17888
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 47790
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 48087
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 56243
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 56468
+                }
+              ],
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/Left__B2B_Brand_5__20.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "0a1c9984-c0a0-400d-9a9c-91a49c4678fb",
+            "name": "N-Left – B2B Brand_5 – 10.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 0,
+              "y": 0,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1920,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": [
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 8800
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 8921.333333333338
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 39437
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 39870.333333333336
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 48236
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 48464
+                }
+              ],
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/Left__B2B_Brand_5__10.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "026e3757-e7b5-4bec-9db6-ade53029c419",
+            "name": "S-Left – B2B Brand_5 – 9.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 0,
+              "y": 1080,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1920,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/Left__B2B_Brand_5__9.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "66eee61b-bcf8-4e67-b506-427fe16d26d8",
+            "name": "S-Left – B2B Brand_5 – 8.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 0,
+              "y": 1080,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1920,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/Left__B2B_Brand_5__8.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "a7467c32-05f3-4039-bdd6-d124ed880a7b",
+            "name": "S-Left – B2B Brand_5 – 21.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 0,
+              "y": 1080,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1920,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/Left__B2B_Brand_5__21.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "5282ad8f-f49b-4b44-b799-feed76d87e6e",
+            "name": "S-Left – B2B Brand_5 – 20.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 0,
+              "y": 1080,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1920,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/Left__B2B_Brand_5__20.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89598,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "5c3316e4-61e7-4ebc-8e5c-32bc4739c2b6",
+            "name": "S-Left – B2B Brand_5 – 10.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 0,
+              "y": 1080,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1920,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/Left__B2B_Brand_5__10.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "61eca263-38f8-47fa-a83a-7aa320cb328a",
+            "name": "N-We are a",
+            "open": false,
+            "type": "text",
+            "props": {
+              "x": 3540,
+              "y": 360,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 3692,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 164,
+              "filters": {},
+              "opacity": [
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 3016
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 5224
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 88210
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 89410
+                }
+              ],
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
                 "rotate": 0
               },
               "background": "transparent"
@@ -301,10 +1362,15 @@
                   }
                 },
                 "opacity": 1,
-                "padding": { "top": 0, "left": 0, "right": 0, "bottom": 0 },
+                "padding": {
+                  "top": 0,
+                  "left": 0,
+                  "right": 0,
+                  "bottom": 0
+                },
                 "animation": "none",
                 "typography": {
-                  "fontSize": 200,
+                  "fontSize": 124,
                   "fontStyle": "normal",
                   "textAlign": "left",
                   "fontFamily": "Arial",
@@ -318,7 +1384,9 @@
                 "animationIn": "none",
                 "animationOut": "none"
               },
-              "text-options-static": { "text": "<p>Hello, World!</p>" },
+              "text-options-static": {
+                "text": "<p>We are a trusted partner dedicated to transforming healthcare for</p>"
+              },
               "text-options-dynamic": {
                 "fallback": "Hello, World!",
                 "data-source": {
@@ -331,7 +1399,1041 @@
               }
             },
             "options": {
-              "end": 1000,
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "818a0f3c-cf05-4300-bc8b-80a6e4981763",
+            "name": "N-healthier members",
+            "open": false,
+            "type": "text",
+            "props": {
+              "x": 3590,
+              "y": 600,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1100,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 164,
+              "filters": {},
+              "opacity": [
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 6166.666666666666
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 7266.66666666667
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 88210
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 89410
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 479000
+                }
+              ],
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "mode": "static",
+              "options": {
+                "color": "#ffff",
+                "shadow": {
+                  "hidden": true,
+                  "options": {
+                    "blur": 10,
+                    "angle": 45,
+                    "color": "#000000",
+                    "offset": 10,
+                    "opacity": 100
+                  }
+                },
+                "opacity": 1,
+                "padding": {
+                  "top": 0,
+                  "left": 0,
+                  "right": 0,
+                  "bottom": 0
+                },
+                "animation": "none",
+                "typography": {
+                  "fontSize": 124,
+                  "fontStyle": "normal",
+                  "textAlign": "left",
+                  "fontFamily": "Arial",
+                  "fontWeight": "normal",
+                  "lineHeight": "normal",
+                  "letterSpacing": 0,
+                  "textTransform": "none",
+                  "verticalAlign": "top",
+                  "textDecoration": "none"
+                },
+                "animationIn": "none",
+                "animationOut": "none"
+              },
+              "text-options-static": {
+                "text": "<p>healthier members,</p>"
+              },
+              "text-options-dynamic": {
+                "fallback": "Hello, World!",
+                "data-source": {
+                  "port": "80",
+                  "route": "",
+                  "domain": "",
+                  "value-path": "",
+                  "refresh-rate": "60"
+                }
+              }
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "f8b8002f-f88c-47f9-88de-b1c381af2a9e",
+            "name": "N-better businesses,",
+            "open": false,
+            "type": "text",
+            "props": {
+              "x": 4730,
+              "y": 600,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1018,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 164,
+              "filters": {},
+              "opacity": [
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 9366.36897441422
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 10729.910555675251
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 88210
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 89410
+                }
+              ],
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "mode": "static",
+              "options": {
+                "color": "#ffffff",
+                "shadow": {
+                  "hidden": true,
+                  "options": {
+                    "blur": 10,
+                    "angle": 45,
+                    "color": "#000000",
+                    "offset": 10,
+                    "opacity": 100
+                  }
+                },
+                "opacity": 1,
+                "padding": {
+                  "top": 0,
+                  "left": 0,
+                  "right": 0,
+                  "bottom": 0
+                },
+                "animation": "none",
+                "typography": {
+                  "fontSize": 124,
+                  "fontStyle": "normal",
+                  "textAlign": "left",
+                  "fontFamily": "Arial",
+                  "fontWeight": "normal",
+                  "lineHeight": "normal",
+                  "letterSpacing": 0,
+                  "textTransform": "none",
+                  "verticalAlign": "top",
+                  "textDecoration": "none"
+                },
+                "animationIn": "none",
+                "animationOut": "none"
+              },
+              "text-options-static": {
+                "text": "<p>better businesses,</p>"
+              },
+              "text-options-dynamic": {
+                "fallback": "Hello, World!",
+                "data-source": {
+                  "port": "80",
+                  "route": "",
+                  "domain": "",
+                  "value-path": "",
+                  "refresh-rate": "60"
+                }
+              }
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "5e52eac4-00dd-48c3-8fdf-822538fe7e7c",
+            "name": "N-and stronger communities.",
+            "open": false,
+            "type": "text",
+            "props": {
+              "x": 5800,
+              "y": 600,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1514,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 164,
+              "filters": {},
+              "opacity": [
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 13546.725385223051
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 14540.345260386724
+                },
+                {
+                  "value": 1,
+                  "easing": "linear",
+                  "timestamp": 88210
+                },
+                {
+                  "value": 0,
+                  "easing": "linear",
+                  "timestamp": 89410
+                }
+              ],
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "mode": "static",
+              "options": {
+                "color": "#ffffff",
+                "shadow": {
+                  "hidden": true,
+                  "options": {
+                    "blur": 10,
+                    "angle": 45,
+                    "color": "#000000",
+                    "offset": 10,
+                    "opacity": 100
+                  }
+                },
+                "opacity": 1,
+                "padding": {
+                  "top": 0,
+                  "left": 0,
+                  "right": 0,
+                  "bottom": 0
+                },
+                "animation": "none",
+                "typography": {
+                  "fontSize": 124,
+                  "fontStyle": "normal",
+                  "textAlign": "left",
+                  "fontFamily": "Arial",
+                  "fontWeight": "normal",
+                  "lineHeight": "normal",
+                  "letterSpacing": 0,
+                  "textTransform": "none",
+                  "verticalAlign": "top",
+                  "textDecoration": "none"
+                },
+                "animationIn": "none",
+                "animationOut": "none"
+              },
+              "text-options-static": {
+                "text": "<p>and stronger communities.</p>"
+              },
+              "text-options-dynamic": {
+                "fallback": "Hello, World!",
+                "data-source": {
+                  "port": "80",
+                  "route": "",
+                  "domain": "",
+                  "value-path": "",
+                  "refresh-rate": "60"
+                }
+              }
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "fe6f00b6-20f4-43cb-907f-8223d89d9c0f",
+            "name": "S-We are a",
+            "open": false,
+            "type": "text",
+            "props": {
+              "x": 3540,
+              "y": 1440,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 3692,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 164,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "mode": "static",
+              "options": {
+                "color": "#ffff",
+                "shadow": {
+                  "hidden": true,
+                  "options": {
+                    "blur": 10,
+                    "angle": 45,
+                    "color": "#000000",
+                    "offset": 10,
+                    "opacity": 100
+                  }
+                },
+                "opacity": 1,
+                "padding": {
+                  "top": 0,
+                  "left": 0,
+                  "right": 0,
+                  "bottom": 0
+                },
+                "animation": "none",
+                "typography": {
+                  "fontSize": 124,
+                  "fontStyle": "normal",
+                  "textAlign": "left",
+                  "fontFamily": "Arial",
+                  "fontWeight": "normal",
+                  "lineHeight": "normal",
+                  "letterSpacing": 0,
+                  "textTransform": "none",
+                  "verticalAlign": "top",
+                  "textDecoration": "none"
+                },
+                "animationIn": "none",
+                "animationOut": "none"
+              },
+              "text-options-static": {
+                "text": "<p>We are a trusted partner dedicated to transforming healthcare for</p>"
+              },
+              "text-options-dynamic": {
+                "fallback": "Hello, World!",
+                "data-source": {
+                  "port": "80",
+                  "route": "",
+                  "domain": "",
+                  "value-path": "",
+                  "refresh-rate": "60"
+                }
+              }
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "427f09fe-5814-4add-a3c5-231ff336ed04",
+            "name": "S-healthier members,",
+            "open": false,
+            "type": "text",
+            "props": {
+              "x": 3590,
+              "y": 1680,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1100,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 164,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "mode": "static",
+              "options": {
+                "color": "#ffff",
+                "shadow": {
+                  "hidden": true,
+                  "options": {
+                    "blur": 10,
+                    "angle": 45,
+                    "color": "#000000",
+                    "offset": 10,
+                    "opacity": 100
+                  }
+                },
+                "opacity": 1,
+                "padding": {
+                  "top": 0,
+                  "left": 0,
+                  "right": 0,
+                  "bottom": 0
+                },
+                "animation": "none",
+                "typography": {
+                  "fontSize": 124,
+                  "fontStyle": "normal",
+                  "textAlign": "left",
+                  "fontFamily": "Arial",
+                  "fontWeight": "normal",
+                  "lineHeight": "normal",
+                  "letterSpacing": 0,
+                  "textTransform": "none",
+                  "verticalAlign": "top",
+                  "textDecoration": "none"
+                },
+                "animationIn": "none",
+                "animationOut": "none"
+              },
+              "text-options-static": {
+                "text": "<p>healthier members,</p>"
+              },
+              "text-options-dynamic": {
+                "fallback": "Hello, World!",
+                "data-source": {
+                  "port": "80",
+                  "route": "",
+                  "domain": "",
+                  "value-path": "",
+                  "refresh-rate": "60"
+                }
+              }
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "8d46743b-5f4e-4032-8ecc-7c068f66cb0c",
+            "name": "S-better businesses,",
+            "open": false,
+            "type": "text",
+            "props": {
+              "x": 4730,
+              "y": 1680,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1018,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 164,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "mode": "static",
+              "options": {
+                "color": "#fffff",
+                "shadow": {
+                  "hidden": true,
+                  "options": {
+                    "blur": 10,
+                    "angle": 45,
+                    "color": "#000000",
+                    "offset": 10,
+                    "opacity": 100
+                  }
+                },
+                "opacity": 1,
+                "padding": {
+                  "top": 0,
+                  "left": 0,
+                  "right": 0,
+                  "bottom": 0
+                },
+                "animation": "none",
+                "typography": {
+                  "fontSize": 124,
+                  "fontStyle": "normal",
+                  "textAlign": "left",
+                  "fontFamily": "Arial",
+                  "fontWeight": "normal",
+                  "lineHeight": "normal",
+                  "letterSpacing": 0,
+                  "textTransform": "none",
+                  "verticalAlign": "top",
+                  "textDecoration": "none"
+                },
+                "animationIn": "none",
+                "animationOut": "none"
+              },
+              "text-options-static": {
+                "text": "<p>better businesses,</p>"
+              },
+              "text-options-dynamic": {
+                "fallback": "Hello, World!",
+                "data-source": {
+                  "port": "80",
+                  "route": "",
+                  "domain": "",
+                  "value-path": "",
+                  "refresh-rate": "60"
+                }
+              }
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "a531d5c5-ddd3-4ab8-a8f0-c35d4ade3010",
+            "name": "S-and stronger communities.",
+            "open": false,
+            "type": "text",
+            "props": {
+              "x": 5800,
+              "y": 1680,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 1514,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 164,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "mode": "static",
+              "options": {
+                "color": "#ffff",
+                "shadow": {
+                  "hidden": true,
+                  "options": {
+                    "blur": 10,
+                    "angle": 45,
+                    "color": "#000000",
+                    "offset": 10,
+                    "opacity": 100
+                  }
+                },
+                "opacity": 1,
+                "padding": {
+                  "top": 0,
+                  "left": 0,
+                  "right": 0,
+                  "bottom": 0
+                },
+                "animation": "none",
+                "typography": {
+                  "fontSize": 124,
+                  "fontStyle": "normal",
+                  "textAlign": "left",
+                  "fontFamily": "Arial",
+                  "fontWeight": "normal",
+                  "lineHeight": "normal",
+                  "letterSpacing": 0,
+                  "textTransform": "none",
+                  "verticalAlign": "top",
+                  "textDecoration": "none"
+                },
+                "animationIn": "none",
+                "animationOut": "none"
+              },
+              "text-options-static": {
+                "text": "<p>and stronger communities.</p>"
+              },
+              "text-options-dynamic": {
+                "fallback": "Hello, World!",
+                "data-source": {
+                  "port": "80",
+                  "route": "",
+                  "domain": "",
+                  "value-path": "",
+                  "refresh-rate": "60"
+                }
+              }
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "c05c3267-fdae-4c8c-96a3-55ac4cb22190",
+            "name": "S2-20240304-B2B_BG-GRADIENT.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 0,
+              "y": 1080,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 10866,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/20240304-B2B_BG-GRADIENT.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": false,
+              "selected": false
+            }
+          },
+          {
+            "id": "0c42ff5f-554e-4a74-a80c-923309d686bd",
+            "name": "N2-20240304-B2B_BG-GRADIENT.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 0,
+              "y": 0,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 10866,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/20240304-B2B_BG-GRADIENT.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": false,
+              "selected": false
+            }
+          },
+          {
+            "id": "5dee7c80-2a4b-45b0-8d5c-1525a0f7c4f1",
+            "name": "black_box.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 8313,
+              "y": 0,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 633,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/black_box.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "4cf3246e-c280-418b-bbcc-65392f742bf9",
+            "name": "black_box.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 1920,
+              "y": 1080,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 633,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/black_box.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "6c35610d-1193-4e4d-85f0-0e06c7f9b4a1",
+            "name": "black_box.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 1920,
+              "y": 0,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 633,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/black_box.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
+              "start": 0,
+              "locked": false,
+              "visible": true,
+              "selected": false
+            }
+          },
+          {
+            "id": "a245003f-2003-452b-9e0f-ffedd3d441ab",
+            "name": "black_box.png",
+            "open": false,
+            "type": "image",
+            "props": {
+              "x": 8313,
+              "y": 1080,
+              "clip": {
+                "top": 0,
+                "left": 0,
+                "right": 0,
+                "bottom": 0
+              },
+              "width": 633,
+              "border": {
+                "radius": 0,
+                "lineColor": "transparent",
+                "lineStyle": "solid",
+                "lineWidth": 0
+              },
+              "height": 1080,
+              "filters": {},
+              "opacity": 1,
+              "transform": {
+                "skew": {
+                  "x": 0,
+                  "y": 0
+                },
+                "scale": {
+                  "x": 100,
+                  "y": 100
+                },
+                "rotate": 0
+              },
+              "background": "transparent"
+            },
+            "content": {
+              "src": "http://gorgon.zignage.com/media/mediaAsset/originals/black_box.png",
+              "fillMode": "contain"
+            },
+            "options": {
+              "end": 89798,
               "start": 0,
               "locked": false,
               "visible": true,
@@ -339,34 +2441,39 @@
             }
           }
         ],
-        "editorData": { "currentTimestamp": 0 },
+        "editorData": {
+          "currentTimestamp": 89410
+        },
+        "_isHydrated": true,
         "isNestedLayout": false
       },
       "canvas": {
-        "id": "bba24922-cc9d-4988-bc3b-365dbf8201ae",
-        "name": "Test2",
-        "location": { "x": 1300, "y": 0, "width": 1920, "height": 1080 },
+        "x": 0,
+        "y": 0,
+        "id": "9aefd0e2-214f-4045-9f15-87ac1526eee6",
+        "name": "Lab Test display",
         "frameRate": 24,
         "resolution": "1920x1080",
         "aspectRatio": "16:9"
       },
       "player": "default",
-      "status": "00000000-0000-0000-0000-000000000000",
+      "status": "ffffffff-ffff-ffff-ffff-fffffffffffe",
       "toTime": "23:59:59.000",
       "weekend": true,
-      "canvasId": "bba24922-cc9d-4988-bc3b-365dbf8201ae",
-      "deviceId": "45f254bf-8aaf-484d-ac96-b86ea9bb6f43",
-      "expireAt": "2025-11-10T05:00:00.000Z",
+      "canvasId": "9aefd0e2-214f-4045-9f15-87ac1526eee6",
+      "deviceId": "95890a4c-f8ae-43b0-a75b-831c9db0649b",
+      "expireAt": "",
       "fromTime": "00:00:00.000",
-      "inceptAt": "2025-11-04T17:54:12.428Z",
-      "layoutId": "9cce2e64-f89b-4ba0-8c3b-c7f64e4deea9",
-      "priority": 2,
+      "inceptAt": "2026-03-22T04:00:00.000Z",
+      "layoutId": "6b644e2d-8c16-4cce-a266-4f8dca93b6c2",
+      "priority": 0,
       "inceptNow": true,
       "expireNever": true,
       "workingDays": true,
-      "scheduleName": "New Schedule - Hello World"
+      "scheduleName": "New Schedule - B2B North & South",
+      "playContinuously": true
     },
-    "created": "2025-11-04T17:54:20.467394+00:00",
-    "modified": "2025-11-04T17:54:20.467330+00:00"
+    "created": "2026-03-22T14:19:24.735170+00:00",
+    "modified": "2026-03-22T14:21:28.824542+00:00"
   }
 ]
