@@ -329,6 +329,31 @@ export class CanvasPlayer {
     this.lastMeta = null;
   }
 
+  private destroyRenderer(player: BaseRendererEl | null, stage?: HTMLDivElement) {
+    if (!player) return;
+    try {
+      player.pause?.();
+    } catch { }
+    try {
+      player.stop?.();
+    } catch { }
+    try {
+      if ((player as any).parentElement) {
+        (player as any).parentElement.removeChild(player as any);
+      }
+    } catch { }
+    if (stage) {
+      try {
+        stage.innerHTML = "";
+      } catch { }
+      try {
+        (stage.style as any).background = "black";
+      } catch { }
+    }
+    if (this.playerA === player) this.playerA = null;
+    if (this.playerB === player) this.playerB = null;
+  }
+
   /* ---------- blackout: force empty black surface (stop & remove renderers) ---------- */
   private blackout(reason: string) {
     this.mount();
@@ -342,39 +367,11 @@ export class CanvasPlayer {
     // Finish analytics session for whatever was visible.
     this.finishLastEventIfAny();
 
-    const kill = (p: BaseRendererEl | null) => {
-      if (!p) return;
-      try {
-        p.pause?.();
-      } catch { }
-      try {
-        p.stop?.();
-      } catch { }
-      try {
-        if ((p as any).parentElement) {
-          (p as any).parentElement.removeChild(p as any);
-        }
-      } catch { }
-    };
-
     // Stop/remove both visible & hidden renderers
-    kill(this.activePlayer);
-    kill(this.backPlayer);
-
-    // Clear stages fully and force black backgrounds
-    const clearStage = (st: HTMLDivElement) => {
-      try {
-        st.innerHTML = "";
-      } catch { }
-      try {
-        (st.style as any).background = "black";
-      } catch { }
-    };
-    if (this.activeStage) clearStage(this.activeStage);
-    if (this.backStage) clearStage(this.backStage);
+    this.destroyRenderer(this.activePlayer, this.activeStage);
+    this.destroyRenderer(this.backPlayer, this.backStage);
 
     // Reset renderer pointers so next item recreates cleanly
-    this.playerA = this.playerB = null;
     this.activePlayer = this.backPlayer = null;
     this.activeKind = this.backKind = null;
 
@@ -491,6 +488,10 @@ export class CanvasPlayer {
     try {
       this.backPlayer?.pause?.();
     } catch { }
+    this.destroyRenderer(this.backPlayer, this.backStage);
+    this.backPlayer = null;
+    this.backKind = null;
+
     try {
       const meta: any = (this as any)._nextMeta;
       if (meta && meta.kind && meta.id) {
@@ -615,6 +616,7 @@ export class CanvasPlayer {
       mediaId: idn.media_id,         // explicit (for readability)
       mediaName: idn.media_name,     // display name
       mediaType: idn.media_type,     // "layout" | "playlist"
+      priority: Number(data?.priority ?? 0),
 
       scheduleName: data?.scheduleName ?? data?.name,
       customer: data?.customer,
@@ -625,6 +627,11 @@ export class CanvasPlayer {
     };
 
     try {
+      const nextPriority = Number(data?.priority ?? 0);
+      const activePriority = Number(this.lastMeta?.priority ?? Number.NEGATIVE_INFINITY);
+      if (this.lastGood && nextPriority > activePriority) {
+        this.blackout(`priority-preempt:${activePriority}->${nextPriority}`);
+      }
       await this.prepareOffscreen(next.kind, next.doc);
       if (versionAtStart !== this.manifestVersion) return;
       await this.swapLayers();

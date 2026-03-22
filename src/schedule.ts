@@ -58,6 +58,7 @@ type NewItem = {
   timeZone?: string;
   name?: string;        // schedule name (often present)
   scheduleName?: string;
+  playContinuously?: boolean;
   // pass-through fields ignored by the engine
 };
 
@@ -134,12 +135,19 @@ function allowedToday(
 function layoutTimelineMs(layout: any): number {
   if (!layout || typeof layout !== 'object') return DEFAULT_SLOT_MS;
   let maxEnd = 0;
+  let hasExplicitTimeline = false;
 
   const take = (node: any) => {
     if (!node || typeof node !== 'object') return;
     const o = node.options || {};
+    const d = Number(o.duration ?? 0);
     const e = Number(o.end ?? 0);
+    if (!Number.isNaN(d) && d > 0) {
+      maxEnd = Math.max(maxEnd, d);
+      hasExplicitTimeline = true;
+    }
     if (!Number.isNaN(e) && e > maxEnd) maxEnd = e;
+    if (!Number.isNaN(e) && e > 0) hasExplicitTimeline = true;
     const kids = node.children;
     if (Array.isArray(kids)) kids.forEach(take);
   };
@@ -147,8 +155,12 @@ function layoutTimelineMs(layout: any): number {
   // consider root's options.duration or .end first
   const rootDur = Number(layout?.options?.duration ?? 0);
   const rootEnd = Number(layout?.options?.end ?? 0);
+  if (Number.isFinite(rootDur) && rootDur > 0) hasExplicitTimeline = true;
+  if (Number.isFinite(rootEnd) && rootEnd > 0) hasExplicitTimeline = true;
   maxEnd = Math.max(maxEnd, isFinite(rootDur) ? rootDur : 0, isFinite(rootEnd) ? rootEnd : 0);
   take(layout);
+
+  if (!hasExplicitTimeline) return Number.POSITIVE_INFINITY;
 
   const ms = Math.min(Math.max(maxEnd || DEFAULT_SLOT_MS, MIN_SLOT_MS), MAX_SLOT_MS);
   return ms;
@@ -378,7 +390,8 @@ export class ScheduleEngine {
     // Bound the slot by the global boundary (preempt if something changes/arrives)
     const slot = pick.slotMs;
     const untilBoundary = Math.max(MIN_RECHECK_MS, snap.nextBoundaryMs - snap.nowMs);
-    const tickMs = Math.max(MIN_RECHECK_MS, Math.min(slot, untilBoundary));
+    const effectiveSlotMs = Number.isFinite(slot) ? slot : untilBoundary;
+    const tickMs = Math.max(MIN_RECHECK_MS, Math.min(effectiveSlotMs, untilBoundary));
 
     // advance the rr index for the next call
     this.rrIndex = (this.rrIndex + 1) % n;
@@ -402,7 +415,7 @@ export class ScheduleEngine {
           scheduleName: pick.scheduleName || undefined,
           contentName: pick.contentName || content.contentName || undefined,
           priority: pick.priority,
-          slotMs: slot,
+          slotMs: Number.isFinite(slot) ? slot : 'continuous',
           nextTickMs: tickMs,
           boundaryISO: new Date(snap.nextBoundaryMs).toISOString(),
         };
