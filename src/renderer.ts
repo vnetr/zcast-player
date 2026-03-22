@@ -17,10 +17,15 @@ declare global {
 
 const root = document.getElementById("root")!;
 const mgr = new CanvasManager(root);
+let analyticsBooted = false;
+
 function bootAnalyticsFromManifest(manifest: any) {
+  if (analyticsBooted) return;
+
   console.info('[analytics] bootAnalyticsFromManifest called');
 
   const items = Array.isArray(manifest) ? manifest : [];
+  if (items.length === 0 && !window.zcast?.deviceId) return;
   const first = (items[0]?.data ?? items[0]) || {};
 
   const defaults = {
@@ -46,6 +51,7 @@ function bootAnalyticsFromManifest(manifest: any) {
       maxBatch: 60,
       defaults,
     });
+    analyticsBooted = true;
 
     // One boot event so we can see traffic without touching DevTools manually
     analytics.logEventStart({

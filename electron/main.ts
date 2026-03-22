@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as url from 'url';
 import { fileURLToPath } from 'url';
-import { createHash } from 'crypto';
+import { createHash, scryptSync, createDecipheriv } from 'crypto';
 import chokidar from 'chokidar';
 import { execSync } from 'child_process';
 
@@ -78,22 +78,63 @@ function sanitizeNvValue(raw: string | Buffer): string {
   return cleaned.split(/\s+/)[0];
 }
 
+type EncCreds = { apiKey?: string; zcastUrl?: string; deviceId?: string };
+function loadConfigFromEncFile(): EncCreds | null {
+  // hard-coded “user always zignage”
+  const p = '/home/zignage/.zignage-rmm-agent/credentials.enc';
 
-function loadConfigFromTpm() {
-  // Convention from your teammate:
-  // NV index 2 → API base URL
-  // NV index 3 → deviceId
-  const apiBase = readTpmNv(2);
-  const deviceId = readTpmNv(3);
+  try {
+    if (!fs.existsSync(p)) return null;
+
+    const enc = fs.readFileSync(p, 'utf8').trim();
+    const [ivHex, encryptedHex] = enc.split(':');
+    if (!ivHex || !encryptedHex) return null;
+
+    // Must match your existing encryption scheme exactly:
+    // key = scryptSync(platform() + USER, 'salt', 32)
+    const key = scryptSync('linux' + 'zignage', 'salt', 32);
+
+    const iv = Buffer.from(ivHex, 'hex');
+    const decipher = createDecipheriv('aes-256-cbc', key, iv);
+
+    let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    const obj = JSON.parse(decrypted) as EncCreds;
+    return obj;
+  } catch (e) {
+    console.warn('[zcast] Failed to decrypt local credentials.enc:', (e as any)?.message || e);
+    return null;
+  }
+}
+
+function loadConfigFromTpmOrFile() {
+  // 1) TPM (your current behavior)
+  const apiBaseFromTpm = readTpmNv(2);
+  const deviceIdFromTpm = readTpmNv(3);
+  // if you also store apiKey in TPM, read it here too
+
+  // 2) If anything missing, read encrypted file
+  const fromFile = (!apiBaseFromTpm || !deviceIdFromTpm) ? loadConfigFromEncFile() : null;
+
+  const apiBase = apiBaseFromTpm || fromFile?.zcastUrl;
+  const deviceId = deviceIdFromTpm || fromFile?.deviceId;
+  const apiKey = fromFile?.apiKey; // your main.ts currently doesn’t set this, but you probably want it
 
   if (apiBase && !process.env.ZCAST_API_BASE) {
     process.env.ZCAST_API_BASE = apiBase;
-    console.log('[zcast] ZCAST_API_BASE loaded from TPM:', apiBase);
+    console.log('[zcast] ZCAST_API_BASE loaded from', apiBaseFromTpm ? 'TPM' : 'credentials.enc');
   }
 
   if (deviceId && !process.env.ZCAST_DEVICE_ID) {
     process.env.ZCAST_DEVICE_ID = deviceId;
-    console.log('[zcast] ZCAST_DEVICE_ID loaded from TPM:', deviceId);
+    console.log('[zcast] ZCAST_DEVICE_ID loaded from', deviceIdFromTpm ? 'TPM' : 'credentials.enc');
+  }
+
+  // If your renderer / websocket needs api key via env:
+  if (apiKey && !process.env.ZCAST_API_KEY) {
+    process.env.ZCAST_API_KEY = apiKey;
+    console.log('[zcast] ZCAST_API_KEY loaded from credentials.enc');
   }
 }
 
@@ -113,9 +154,10 @@ const DEBUG_MAN = DEBUG_ALL || /^(1|true|yes)$/i.test(String(process.env.ZCAST_D
 
 // Manifest read/watch tuning
 const READ_BUDGET_MS = Number(process.env.ZCAST_MANIFEST_READ_BUDGET_MS ?? 2500);
-const QUIET_MS = Number(process.env.ZCAST_MANIFEST_QUIET_MS ?? 120);
+const QUIET_MS = Number(process.env.ZCAST_MANIFEST_QUIET_MS ?? 40);
+const READ_RETRY_MS = Number(process.env.ZCAST_MANIFEST_RETRY_MS ?? 25);
 const WATCH_USE_POLL = /^(1|true|yes)$/i.test(String(process.env.ZCAST_MANIFEST_WATCH_POLL || ''));
-const WATCH_INTERVAL = Number(process.env.ZCAST_MANIFEST_WATCH_INTERVAL ?? 500);
+const WATCH_INTERVAL = Number(process.env.ZCAST_MANIFEST_WATCH_INTERVAL ?? 100);
 
 // -------- GPU / HW accel --------
 const enableFeatures = new Set<string>([
@@ -217,6 +259,9 @@ if (isNvidiaDisplay) {
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
+app.commandLine.appendSwitch('disable-gpu-watchdog');
+app.commandLine.appendSwitch('disable-gpu-process-crash-limit');
+
 let win: BrowserWindow | null = null;
 // Default TPM NV size (bytes). Can be overridden via env if needed.
 const TPM_NV_SIZE = Number(process.env.ZCAST_TPM_NV_SIZE || '1024');
@@ -297,8 +342,15 @@ function createWindow() {
 
       // Signage-friendly security posture
       webSecurity: false,               // allow scheme changes
-      allowRunningInsecureContent: true // http assets alongside file://
+      allowRunningInsecureContent: true, // http assets alongside file://
+      spellcheck: false,
+      navigateOnDragDrop: false,
+      disableDialogs: true,
+
+      // Better startup/runtime code caching behavior
+      v8CacheOptions: 'bypassHeatCheck',
     },
+
   });
 
   const dev = !!process.env.VITE_DEV;
@@ -322,7 +374,7 @@ function createWindow() {
         console.warn('[zcast] failed to apply rotate:', rot, e);
       }
     };
-
+    win.webContents.setBackgroundThrottling(false);
     // Apply on first load and on any navigation/reload
     win.webContents.on('did-finish-load', apply);
     win.webContents.on('did-navigate', apply);
@@ -334,7 +386,9 @@ function createWindow() {
 
 const mf = manifestFilePath();
 if (!mf) console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specified. Dev HMR only.');
-loadConfigFromTpm();
+
+loadConfigFromTpmOrFile();
+
 app.whenReady().then(() => {
   // ---- paths ----
   const distIndex = prodIndexHtml();                            // /opt/.../app.asar/dist/index.html
@@ -514,12 +568,16 @@ app.whenReady().then(() => {
   // ============================
   // (A) http(s) → local hashed cache (unchanged)
   // ============================
+  const FONT_EXT = /\.(woff2?|ttf|otf)(\?.*)?$/i;
   session.defaultSession.webRequest.onBeforeRequest(
-    { urls: ['http://*/*', 'https://*/*'] },
-    (details, callback) => {
-      const local = mapRemoteToLocal(details.url);
-      if (local) return callback({ redirectURL: toFileUrl(local) });
-      return callback({});
+    { urls: ['*://*/*', 'file://*/*'] },
+    (details, cb) => {
+      try {
+        if (FONT_EXT.test(details.url)) {
+          console.log('[FONT REQ]', details.resourceType, details.url);
+        }
+      } catch { }
+      cb({});
     }
   );
 
@@ -602,7 +660,7 @@ app.whenReady().then(() => {
 
   /**
    * Read JSON only when the manifest looks stable:
-   *  - size & mtime unchanged across QUIET_MS
+   *  - size & mtime unchanged across the read
    *  - text ends well and parses
    * Returns parsed object or `null` if couldn't get a stable read inside READ_BUDGET_MS.
    */
@@ -614,11 +672,12 @@ app.whenReady().then(() => {
       try {
         const s1 = await fs.promises.stat(file);
         const buf = await fs.promises.readFile(file); // single read
-        await sleep(QUIET_MS);                        // quiet window
         const s2 = await fs.promises.stat(file);
 
         if (s2.size !== s1.size || s2.mtimeMs !== s1.mtimeMs) {
           // still being written; retry
+          lastErr = new Error('manifest-mutated-during-read');
+          await sleep(READ_RETRY_MS);
           continue;
         }
 
@@ -635,7 +694,7 @@ app.whenReady().then(() => {
         return JSON.parse(tr);
       } catch (e) {
         lastErr = e;
-        await sleep(80);
+        await sleep(READ_RETRY_MS);
       }
     }
 
@@ -657,17 +716,36 @@ app.whenReady().then(() => {
     }
   }
 
-  async function maybeBroadcastFromDisk(file: string, why: string) {
-    const json = await readManifestStable(file);
-    if (json === null) return; // not ready yet
-    const h = computeHash(json);
-    if (h && h !== lastManifestHash) {
-      lastManifestHash = h;
-      lastManifestObject = json;
-      sendToRenderer(json, why);
-    } else if (DEBUG_MAN) {
-      console.log('[zcast] manifest changed on disk but content hash identical; skipping broadcast.');
+  let manifestReadInFlight: Promise<void> | null = null;
+  let manifestReadQueued = false;
+  let queuedManifestReason = 'change';
+
+  function maybeBroadcastFromDisk(file: string, why: string) {
+    queuedManifestReason = why;
+    if (manifestReadInFlight) {
+      manifestReadQueued = true;
+      return;
     }
+
+    manifestReadInFlight = (async () => {
+      do {
+        manifestReadQueued = false;
+        const reason = queuedManifestReason;
+        const json = await readManifestStable(file);
+        if (json === null) continue;
+
+        const h = computeHash(json);
+        if (h && h !== lastManifestHash) {
+          lastManifestHash = h;
+          lastManifestObject = json;
+          sendToRenderer(json, reason);
+        } else if (DEBUG_MAN) {
+          console.log('[zcast] manifest changed on disk but content hash identical; skipping broadcast.');
+        }
+      } while (manifestReadQueued);
+    })().finally(() => {
+      manifestReadInFlight = null;
+    });
   }
 
   ipcMain.handle('zcast:read-manifest', async () => {
@@ -707,12 +785,12 @@ app.whenReady().then(() => {
       persistent: true,
       ignoreInitial: false,  // 'add' fires on startup if file exists
       awaitWriteFinish: {
-        stabilityThreshold: Math.max(QUIET_MS, 120),
+        stabilityThreshold: Math.max(QUIET_MS, 25),
         pollInterval: 50,
       },
       disableGlobbing: true,
       depth: 0,
-      atomic: 100,
+      atomic: Math.max(25, QUIET_MS),
       usePolling: WATCH_USE_POLL,
       interval: WATCH_INTERVAL,
       binaryInterval: WATCH_INTERVAL,
