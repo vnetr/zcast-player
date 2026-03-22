@@ -6,6 +6,7 @@ const DEFAULT_TZ = 'America/New_York';
 const DEFAULT_SLOT_MS = 15_000;   // if layout/playlist has no timeline
 const MIN_SLOT_MS = 2_000;        // never switch faster than this
 const MAX_SLOT_MS = 5 * 60_000;   // protect against crazy timelines
+const MIN_RECHECK_MS = 100;       // keep schedule boundary reactions tight
 // ----------------------------
 
 // ---------- LOGGING MODE (runtime-tunable via localStorage) ----------
@@ -16,6 +17,14 @@ const ENGINE_LOG_MODE: LogMode = (() => {
     if (v === 'off' || v === 'first' || v === 'changes' || v === 'verbose') return v as LogMode;
   } catch {}
   return 'first'; // default: log only once after manifest is applied
+})();
+const DEBUG_NORMALIZE = (() => {
+  try {
+    return ENGINE_LOG_MODE === 'verbose' ||
+      localStorage.getItem('zcast.schedule.normalize') === '1';
+  } catch {
+    return false;
+  }
 })();
 
 const ALL_DAYS = ['mo','tu','we','th','fr','sa','su'] as const;
@@ -82,13 +91,15 @@ export function normalize(manifest: any): NewItem[] {
     else if (looksNested(raw)) out.push(raw.data);
   }
 
-  console.groupCollapsed('[schedule] normalize');
-  console.info('input:', Array.isArray(manifest) ? `array(len=${manifest.length})` : typeof manifest);
-  console.info('normalized items:', out.length);
-  if (out.length > 0) {
-    console.debug('sample:', safePreview(out[0]));
+  if (DEBUG_NORMALIZE) {
+    console.groupCollapsed('[schedule] normalize');
+    console.info('input:', Array.isArray(manifest) ? `array(len=${manifest.length})` : typeof manifest);
+    console.info('normalized items:', out.length);
+    if (out.length > 0) {
+      console.debug('sample:', safePreview(out[0]));
+    }
+    console.groupEnd();
   }
-  console.groupEnd();
   return out;
 }
 function safePreview(x: unknown) { try { return JSON.parse(JSON.stringify(x)); } catch { return x; } }
@@ -278,7 +289,7 @@ export class ScheduleEngine {
         next = todaysWindow(tomorrow, d.fromTime, d.toTime).start;
       }
       if (expire && expire.isValid && next > expire)      next = expire.plus({ millisecond: 1 });
-      if (next && next < now)                             next = now.plus({ milliseconds: 250 });
+      if (next && next < now)                             next = now.plus({ milliseconds: MIN_RECHECK_MS });
 
       const layout = d.media;
       const slotMs =
@@ -348,7 +359,7 @@ export class ScheduleEngine {
   next(manifestNow?: Date): { item: EvalItem | null, tickMs: number, snap: Snapshot } {
     const snap = this.snapshot(manifestNow ?? new Date());
     if (snap.playlist.length === 0) {
-      return { item: null, tickMs: Math.max(250, snap.nextBoundaryMs - snap.nowMs), snap };
+      return { item: null, tickMs: Math.max(MIN_RECHECK_MS, snap.nextBoundaryMs - snap.nowMs), snap };
     }
 
     // reset rotation index if the group changed
@@ -366,8 +377,8 @@ export class ScheduleEngine {
 
     // Bound the slot by the global boundary (preempt if something changes/arrives)
     const slot = pick.slotMs;
-    const untilBoundary = Math.max(250, snap.nextBoundaryMs - snap.nowMs);
-    const tickMs = Math.max(250, Math.min(slot, untilBoundary));
+    const untilBoundary = Math.max(MIN_RECHECK_MS, snap.nextBoundaryMs - snap.nowMs);
+    const tickMs = Math.max(MIN_RECHECK_MS, Math.min(slot, untilBoundary));
 
     // advance the rr index for the next call
     this.rrIndex = (this.rrIndex + 1) % n;

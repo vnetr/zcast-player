@@ -154,9 +154,10 @@ const DEBUG_MAN = DEBUG_ALL || /^(1|true|yes)$/i.test(String(process.env.ZCAST_D
 
 // Manifest read/watch tuning
 const READ_BUDGET_MS = Number(process.env.ZCAST_MANIFEST_READ_BUDGET_MS ?? 2500);
-const QUIET_MS = Number(process.env.ZCAST_MANIFEST_QUIET_MS ?? 120);
+const QUIET_MS = Number(process.env.ZCAST_MANIFEST_QUIET_MS ?? 40);
+const READ_RETRY_MS = Number(process.env.ZCAST_MANIFEST_RETRY_MS ?? 25);
 const WATCH_USE_POLL = /^(1|true|yes)$/i.test(String(process.env.ZCAST_MANIFEST_WATCH_POLL || ''));
-const WATCH_INTERVAL = Number(process.env.ZCAST_MANIFEST_WATCH_INTERVAL ?? 500);
+const WATCH_INTERVAL = Number(process.env.ZCAST_MANIFEST_WATCH_INTERVAL ?? 100);
 
 // -------- GPU / HW accel --------
 const enableFeatures = new Set<string>([
@@ -657,7 +658,7 @@ app.whenReady().then(() => {
 
   /**
    * Read JSON only when the manifest looks stable:
-   *  - size & mtime unchanged across QUIET_MS
+   *  - size & mtime unchanged across the read
    *  - text ends well and parses
    * Returns parsed object or `null` if couldn't get a stable read inside READ_BUDGET_MS.
    */
@@ -669,11 +670,12 @@ app.whenReady().then(() => {
       try {
         const s1 = await fs.promises.stat(file);
         const buf = await fs.promises.readFile(file); // single read
-        await sleep(QUIET_MS);                        // quiet window
         const s2 = await fs.promises.stat(file);
 
         if (s2.size !== s1.size || s2.mtimeMs !== s1.mtimeMs) {
           // still being written; retry
+          lastErr = new Error('manifest-mutated-during-read');
+          await sleep(READ_RETRY_MS);
           continue;
         }
 
@@ -690,7 +692,7 @@ app.whenReady().then(() => {
         return JSON.parse(tr);
       } catch (e) {
         lastErr = e;
-        await sleep(80);
+        await sleep(READ_RETRY_MS);
       }
     }
 
@@ -712,17 +714,36 @@ app.whenReady().then(() => {
     }
   }
 
-  async function maybeBroadcastFromDisk(file: string, why: string) {
-    const json = await readManifestStable(file);
-    if (json === null) return; // not ready yet
-    const h = computeHash(json);
-    if (h && h !== lastManifestHash) {
-      lastManifestHash = h;
-      lastManifestObject = json;
-      sendToRenderer(json, why);
-    } else if (DEBUG_MAN) {
-      console.log('[zcast] manifest changed on disk but content hash identical; skipping broadcast.');
+  let manifestReadInFlight: Promise<void> | null = null;
+  let manifestReadQueued = false;
+  let queuedManifestReason = 'change';
+
+  function maybeBroadcastFromDisk(file: string, why: string) {
+    queuedManifestReason = why;
+    if (manifestReadInFlight) {
+      manifestReadQueued = true;
+      return;
     }
+
+    manifestReadInFlight = (async () => {
+      do {
+        manifestReadQueued = false;
+        const reason = queuedManifestReason;
+        const json = await readManifestStable(file);
+        if (json === null) continue;
+
+        const h = computeHash(json);
+        if (h && h !== lastManifestHash) {
+          lastManifestHash = h;
+          lastManifestObject = json;
+          sendToRenderer(json, reason);
+        } else if (DEBUG_MAN) {
+          console.log('[zcast] manifest changed on disk but content hash identical; skipping broadcast.');
+        }
+      } while (manifestReadQueued);
+    })().finally(() => {
+      manifestReadInFlight = null;
+    });
   }
 
   ipcMain.handle('zcast:read-manifest', async () => {
@@ -762,12 +783,12 @@ app.whenReady().then(() => {
       persistent: true,
       ignoreInitial: false,  // 'add' fires on startup if file exists
       awaitWriteFinish: {
-        stabilityThreshold: Math.max(QUIET_MS, 120),
+        stabilityThreshold: Math.max(QUIET_MS, 25),
         pollInterval: 50,
       },
       disableGlobbing: true,
       depth: 0,
-      atomic: 100,
+      atomic: Math.max(25, QUIET_MS),
       usePolling: WATCH_USE_POLL,
       interval: WATCH_INTERVAL,
       binaryInterval: WATCH_INTERVAL,

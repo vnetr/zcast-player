@@ -3,6 +3,7 @@ export type BaseRendererEl = HTMLElement & {
   play: () => Promise<void>;
   pause: () => Promise<void>;
   stop: () => Promise<void>;
+  onLayoutLoaded?: (data: any) => void;
 };
 
 export type LayoutRendererEl = BaseRendererEl & {

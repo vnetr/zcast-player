@@ -64,6 +64,9 @@ function cfgEquals(a: CanvasCfg, b: CanvasCfg): boolean {
   );
 }
 
+const FAST_LOOP_MS = 100;
+const EMPTY_CANVAS_RECHECK_MS = 250;
+
 /* ===========================
    CanvasPlayer (per-canvas)
    =========================== */
@@ -202,28 +205,17 @@ export class CanvasPlayer {
   }
 
   /* ---------- Manifest handling ---------- */
-  updateManifest(fullManifest: any) {
+  updateManifest(itemsForCanvas: any[]) {
     if (!this.engine) this.engine = new ScheduleEngine();
 
-    // Filter manifest → only items for this canvas id
-    const list = normalize(fullManifest);
-    const filtered = list.filter((it: any) => {
-      const cid =
-        it?.canvasId ||
-        it?.canvas?.id ||
-        it?.data?.canvasId ||
-        it?.data?.canvas?.id;
-      return String(cid ?? "") === this.cfg.id;
-    });
-
-    this.engine.updateManifest(filtered);
+    this.engine.updateManifest(itemsForCanvas);
     this.manifestVersion++;
     this.stopLoop();
 
     // ✅ If there are no items for this canvas at all, go black immediately.
-    if (filtered.length === 0) {
+    if (itemsForCanvas.length === 0) {
       this.blackout("manifest-empty-for-canvas");
-      this.scheduleNext(1000); // keep evaluating periodically (or wait for next manifest push)
+      this.scheduleNext(EMPTY_CANVAS_RECHECK_MS);
       return;
     }
 
@@ -234,7 +226,7 @@ export class CanvasPlayer {
   private waitLoaded(
     el: HTMLElement,
     kind: RendererKind,
-    timeoutMs = 6000
+    timeoutMs = 1500
   ): Promise<void> {
     // Playlist renderer does not expose a "loaded" event; skip.
     if (kind === "playlist") return Promise.resolve();
@@ -242,25 +234,36 @@ export class CanvasPlayer {
     const eventName = "layoutLoaded";
     return new Promise<void>((resolve, reject) => {
       let done = false;
+      const renderer = el as BaseRendererEl;
+      const prevOnLayoutLoaded = renderer.onLayoutLoaded;
+      const finish = (err?: Error) => {
+        if (done) return;
+        done = true;
+        cleanup();
+        if (err) reject(err);
+        else resolve();
+      };
       const onLoaded = () => {
-        if (!done) {
-          done = true;
-          cleanup();
-          resolve();
-        }
+        finish();
+      };
+      const onLayoutLoaded = (data: any) => {
+        try {
+          prevOnLayoutLoaded?.(data);
+        } catch { }
+        finish();
       };
       const t = setTimeout(() => {
-        if (!done) {
-          done = true;
-          cleanup();
-          reject(new Error(`${eventName} timeout`));
-        }
+        finish(new Error(`${eventName} timeout`));
       }, timeoutMs);
       const cleanup = () => {
         clearTimeout(t);
         el.removeEventListener(eventName as any, onLoaded as any);
+        if (renderer.onLayoutLoaded === onLayoutLoaded) {
+          renderer.onLayoutLoaded = prevOnLayoutLoaded;
+        }
       };
       el.addEventListener(eventName as any, onLoaded as any, { once: true });
+      renderer.onLayoutLoaded = onLayoutLoaded;
     });
   }
 
@@ -568,7 +571,7 @@ export class CanvasPlayer {
 
   private async tick(versionAtStart: number) {
     if (!this.engine) {
-      this.scheduleNext(500);
+      this.scheduleNext(FAST_LOOP_MS);
       return;
     }
 
@@ -578,7 +581,7 @@ export class CanvasPlayer {
     if (!item) {
       // ✅ Nothing active right now => force black + remove old content
       this.blackout("no-active-now");
-      this.scheduleNext(Math.min(1000, Math.max(250, tickMs)));
+      this.scheduleNext(Math.max(FAST_LOOP_MS, tickMs));
       return;
     }
 
@@ -597,7 +600,7 @@ export class CanvasPlayer {
       this.lastGood.id === idn.media_id;
 
     if (same) {
-      this.scheduleNext(Math.max(500, tickMs));
+      this.scheduleNext(Math.max(FAST_LOOP_MS, tickMs));
       return;
     }
 
@@ -630,7 +633,7 @@ export class CanvasPlayer {
       console.error("[canvas] prepare/swap failed; keeping current item", e);
     }
 
-    this.scheduleNext(Math.max(500, tickMs));
+    this.scheduleNext(Math.max(FAST_LOOP_MS, tickMs));
   }
 }
 
@@ -656,10 +659,15 @@ export class CanvasManager {
     // Build desired canvas set from manifest
     const items = normalize(manifest);
     const wanted = new Map<string, CanvasCfg>();
+    const itemsByCanvas = new Map<string, any[]>();
 
     for (const it of items) {
-      const cfg = pickCanvasCfg({ data: it, ...it });
-      if (cfg) wanted.set(cfg.id, cfg); // last wins if duplicates
+      const cfg = pickCanvasCfg(it);
+      if (!cfg) continue;
+      wanted.set(cfg.id, cfg); // last wins if duplicates
+      const bucket = itemsByCanvas.get(cfg.id);
+      if (bucket) bucket.push(it);
+      else itemsByCanvas.set(cfg.id, [it]);
     }
 
     // Remove players no longer present
@@ -687,8 +695,7 @@ export class CanvasManager {
           this.lastCfg.set(id, cfg);
         }
       }
-      // Always pass the full manifest (player filters by its id)
-      p.updateManifest(manifest);
+      p.updateManifest(itemsByCanvas.get(id) ?? []);
     }
   }
 }
