@@ -173,10 +173,28 @@ const DISABLE_HW_ACCEL = /^(1|true|yes)$/i.test(String(process.env.ZCAST_DISABLE
 const DISABLE_GPU_SANDBOX = /^(1|true|yes)$/i.test(String(process.env.ZCAST_DISABLE_GPU_SANDBOX || ''));
 const NO_SANDBOX = /^(1|true|yes)$/i.test(String(process.env.ZCAST_NO_SANDBOX || ''));
 const IN_PROCESS_GPU = /^(1|true|yes)$/i.test(String(process.env.ZCAST_IN_PROCESS_GPU || ''));
+const DISABLE_DEV_SHM_USAGE = /^(1|true|yes)$/i.test(String(process.env.ZCAST_DISABLE_DEV_SHM_USAGE || ''));
 
 // Optional "dangerous" GPU flags only for troubleshooting.
 // Chromium marks some of these as test-oriented; keep OFF by default.
 const ALLOW_UNSAFE_GPU_FLAGS = /^(1|true|yes)$/i.test(String(process.env.ZCAST_UNSAFE_GPU_FLAGS || ''));
+
+function canUseDevShm(): boolean {
+  try {
+    fs.accessSync('/dev/shm', fs.constants.W_OK | fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+if (DISABLE_DEV_SHM_USAGE || !canUseDevShm()) {
+  console.warn('[zcast] using --disable-dev-shm-usage', {
+    requested: DISABLE_DEV_SHM_USAGE,
+    devShmUsable: canUseDevShm(),
+  });
+  app.commandLine.appendSwitch('disable-dev-shm-usage');
+}
 
 
 if (DISABLE_HW_ACCEL) {
@@ -240,6 +258,7 @@ console.info('[zcast][gpu] startup toggles:', {
   disableGpuSandbox: DISABLE_GPU_SANDBOX,
   noSandbox: NO_SANDBOX,
   inProcessGpu: IN_PROCESS_GPU,
+  disableDevShmUsage: DISABLE_DEV_SHM_USAGE || !canUseDevShm(),
   forceUseGl: process.env.ZCAST_FORCE_USE_GL || '',
   forceUseAngle: process.env.ZCAST_FORCE_USE_ANGLE || '',
   hwDecode: process.env.ZCAST_HW_DECODE || '',
