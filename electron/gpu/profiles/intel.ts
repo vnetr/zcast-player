@@ -47,14 +47,8 @@ export function applyGpuProfile(app: App) {
     }
 
 
-    // Apply switches ONCE
-    if (isNvidiaDisplay) {
-        // These were tuned for the Nvidia signage boxes
-        app.commandLine.appendSwitch('ignore-gpu-blocklist');
-        app.commandLine.appendSwitch('enable-gpu-rasterization');
-        app.commandLine.appendSwitch('enable-zero-copy');
-    } else {
-        console.log('[zcast][gpu] non-Nvidia: using conservative defaults (no explicit zero-copy/raster switches).');
+    if (!isNvidiaDisplay) {
+        console.log('[zcast][gpu] non-Nvidia: using conservative defaults (no explicit ANGLE override).');
     }
 
     app.commandLine.appendSwitch('enable-features', [...enableFeatures].join(','));

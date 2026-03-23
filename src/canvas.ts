@@ -131,6 +131,9 @@ export class CanvasPlayer {
       userSelect: "none",
       pointerEvents: "none", // render-only surface; events disabled
       background: "black", // ✅ default black
+      contain: "strict",
+      transform: "translateZ(0)",
+      backfaceVisibility: "hidden",
     } as CSSStyleDeclaration);
 
     // A/B layers inside the canvas
@@ -148,6 +151,15 @@ export class CanvasPlayer {
     this.stageB = stage.querySelector(".layer.hidden") as HTMLDivElement;
     this.activeStage = this.stageA;
     this.backStage = this.stageB;
+
+    [this.stageA, this.stageB].forEach((layer) => {
+      Object.assign(layer.style, {
+        contain: "strict",
+        transform: "translateZ(0)",
+        backfaceVisibility: "hidden",
+        willChange: "opacity, transform",
+      } as CSSStyleDeclaration);
+    });
   }
 
   unmount() {
@@ -338,6 +350,15 @@ export class CanvasPlayer {
       player.stop?.();
     } catch { }
     try {
+      player.querySelectorAll?.("video, audio").forEach((media: any) => {
+        try {
+          media.pause?.();
+          media.removeAttribute?.("src");
+          media.load?.();
+        } catch { }
+      });
+    } catch { }
+    try {
       if ((player as any).parentElement) {
         (player as any).parentElement.removeChild(player as any);
       }
@@ -414,6 +435,12 @@ export class CanvasPlayer {
       Object.assign(el.style, {
         position: "absolute",
         inset: "0",
+        display: "block",
+        width: "100%",
+        height: "100%",
+        contain: "strict",
+        transform: "translateZ(0)",
+        backfaceVisibility: "hidden",
       } as CSSStyleDeclaration);
 
       // Optional per-canvas frame rate (layout/playlist both accept frameRate in your wrappers)
@@ -659,6 +686,10 @@ export class CanvasManager {
     // ✅ Global fallback: if no canvases exist, root stays black
     try {
       this.root.style.background = "black";
+      this.root.style.position = "relative";
+      this.root.style.overflow = "hidden";
+      this.root.style.contain = "strict";
+      this.root.style.transform = "translateZ(0)";
     } catch { }
   }
 

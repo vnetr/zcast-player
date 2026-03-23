@@ -6,11 +6,166 @@ const PATCH_DECORATOR = /e\("design:type",\s*[A-Za-z_$][\w$]*\)/g;
 // This keeps patterns like `return console.error(...),W`...`` valid → `return 0,W`...``.
 const PATCH_LAYOUT_NO_DOC_CALL =
   /console\.error\(\s*"\[ERROR\]\s*No document found for layout renderer\."\s*\)/g;
+const PATCH_PLAYLIST_LAYOUT_ITEM_FRAMERATE =
+  /\.frameRate=\$\{Math\.max\(this\.frameRate\|\|30,30\)\}/g;
 
 // Track whether a renderer kind has been loaded
 const loaded: Record<RendererKind, boolean> = { layout: false, playlist: false };
 // Also track the in-flight promise to prevent concurrent double-loads
 const loading: Partial<Record<RendererKind, Promise<void>>> = {};
+
+type MediaPrefetchMode = 'none' | 'metadata' | 'full';
+
+type PerfTuning = {
+  mediaPrefetchMode: MediaPrefetchMode;
+  disableRendererDebug: boolean;
+  avPrefetchTimeoutMs: number;
+  imagePrefetchTimeoutMs: number;
+};
+
+function getPerfTuning(): PerfTuning {
+  const perf = (window as any).zcast?.perf ?? {};
+  const mediaPrefetchMode: MediaPrefetchMode =
+    perf.mediaPrefetchMode === 'full' || perf.mediaPrefetchMode === 'metadata'
+      ? perf.mediaPrefetchMode
+      : 'none';
+
+  return {
+    mediaPrefetchMode,
+    disableRendererDebug: perf.disableRendererDebug !== false,
+    avPrefetchTimeoutMs:
+      typeof perf.avPrefetchTimeoutMs === 'number' && perf.avPrefetchTimeoutMs > 0
+        ? perf.avPrefetchTimeoutMs
+        : 750,
+    imagePrefetchTimeoutMs:
+      typeof perf.imagePrefetchTimeoutMs === 'number' && perf.imagePrefetchTimeoutMs > 0
+        ? perf.imagePrefetchTimeoutMs
+        : 1500,
+  };
+}
+
+function settleWithin(work: Promise<unknown>, timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = window.setTimeout(finish, timeoutMs);
+    work.then(finish).catch(finish);
+  });
+}
+
+function normalizePrefetchSrc(src: string): string {
+  const schemeMatch = src.match(/^([a-z]+):/i);
+  const scheme = schemeMatch?.[1]?.toLowerCase();
+  const pageScheme = window.location?.protocol?.replace(':', '') || '';
+
+  if ((scheme === 'http' || scheme === 'https') && pageScheme && pageScheme !== 'file' && pageScheme !== scheme) {
+    return src.replace(/^https?:/i, `${pageScheme}:`);
+  }
+
+  return src;
+}
+
+function lightweightAvPrefetch(
+  src: string,
+  type: 'video' | 'audio',
+  mode: Exclude<MediaPrefetchMode, 'none'>,
+  timeoutMs: number
+): Promise<void> {
+  const resolvedSrc = normalizePrefetchSrc(src);
+  if (!resolvedSrc) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const media = document.createElement(type === 'audio' ? 'audio' : 'video');
+    let settled = false;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      media.onloadedmetadata = null;
+      media.onloadeddata = null;
+      media.onerror = null;
+      try {
+        media.pause?.();
+        media.removeAttribute('src');
+        media.load?.();
+      } catch {}
+    };
+
+    const timer = window.setTimeout(finish, timeoutMs);
+
+    if (type === 'video') {
+      const video = media as HTMLVideoElement;
+      video.muted = true;
+      video.playsInline = true;
+      (video as any).disablePictureInPicture = true;
+    }
+
+    media.preload = mode === 'full' ? 'auto' : 'metadata';
+    media.onloadedmetadata = finish;
+    media.onloadeddata = finish;
+    media.onerror = finish;
+    media.src = resolvedSrc;
+    media.load();
+  });
+}
+
+async function patchLayoutRendererPrototype(waitForDefinition: boolean) {
+  if (waitForDefinition) {
+    await customElements.whenDefined('layout-renderer');
+  }
+
+  const Ctor: any = customElements.get('layout-renderer');
+  if (!Ctor) return;
+
+  const proto: any = Ctor.prototype;
+  if (proto.__zcastPerfPatched) return;
+
+  const origPrefetchAsset = typeof proto.prefetchAsset === 'function' ? proto.prefetchAsset : null;
+  const origUpdateDebugInfo =
+    typeof proto.updateDebugInfo === 'function' ? proto.updateDebugInfo : null;
+
+  if (origPrefetchAsset) {
+    proto.prefetchAsset = function patchedPrefetchAsset(src: string, type: string) {
+      const tuning = getPerfTuning();
+
+      if ((type === 'video' || type === 'audio') && tuning.mediaPrefetchMode !== 'full') {
+        if (tuning.mediaPrefetchMode === 'none') return Promise.resolve();
+        return lightweightAvPrefetch(
+          src,
+          type as 'video' | 'audio',
+          tuning.mediaPrefetchMode,
+          tuning.avPrefetchTimeoutMs
+        );
+      }
+
+      const original = Promise.resolve().then(() => origPrefetchAsset.call(this, src, type));
+      if (type === 'image') {
+        return settleWithin(original, tuning.imagePrefetchTimeoutMs);
+      }
+      return original.catch(() => undefined);
+    };
+  }
+
+  proto.updateDebugInfo = function patchedUpdateDebugInfo(...args: any[]) {
+    if (!getPerfTuning().disableRendererDebug && origUpdateDebugInfo) {
+      return origUpdateDebugInfo.apply(this, args);
+    }
+  };
+
+  proto.__zcastPerfPatched = true;
+  console.info('[loader] Patched <layout-renderer> for signage playback.');
+}
 
 // Build a URL to /public/vendor/* that works in dev and packaged
 function vendorUrl(file: string) {
@@ -52,9 +207,11 @@ function patchDefineIdempotent(): () => void {
  * <layout-renderer> from ever connecting without a `.document`.
  */
 async function postImportPatch(kind: RendererKind) {
-  if (kind !== 'playlist') return;
-
   try {
+    await patchLayoutRendererPrototype(kind === 'layout');
+
+    if (kind !== 'playlist') return;
+
     await customElements.whenDefined('layout-item-renderer');
     const Ctor: any = customElements.get('layout-item-renderer');
     if (!Ctor) return;
@@ -113,6 +270,12 @@ async function importVendor(kind: RendererKind) {
   if (kind === 'layout') {
     src = src.replace(PATCH_LAYOUT_NO_DOC_CALL, '0');
   }
+  if (kind === 'playlist') {
+    src = src.replace(
+      PATCH_PLAYLIST_LAYOUT_ITEM_FRAMERATE,
+      '.frameRate=${this.frameRate||30}'
+    );
+  }
 
   // Avoid duplicate custom element registrations
   const unpatch = patchDefineIdempotent();
@@ -135,6 +298,7 @@ export async function loadRenderer(kind: RendererKind) {
   const tag = kind === 'layout' ? 'layout-renderer' : 'playlist-renderer';
   if (customElements.get(tag)) {
     loaded[kind] = true;
+    await postImportPatch(kind);
     return;
   }
   if (loaded[kind]) return;
@@ -159,16 +323,19 @@ export function createRendererEl(kind: RendererKind): BaseRendererEl {
   // Common sizing/position
   (el.style as any).position = 'absolute';
   (el.style as any).inset = '0';
+  (el.style as any).display = 'block';
+  (el.style as any).width = '100%';
+  (el.style as any).height = '100%';
+  (el.style as any).contain = 'strict';
+  (el.style as any).transform = 'translateZ(0)';
+  (el.style as any).backfaceVisibility = 'hidden';
 
   // Reasonable defaults for both renderers
   el.zoomFactor = 1;
   el.frameRate = 30;
-
-  // Layout-only defaults — harmless if playlist ignores them
-  if (kind === 'layout') {
-    el.editingMode = 'false';
-    el.playbackMode = 'gpu';
-  }
+  el.editingMode = 'false';
+  el.playbackMode = 'gpu';
+  el.currentTimestamp = 0;
 
   return el as BaseRendererEl;
 }

@@ -11,6 +11,12 @@ declare global {
       deviceId?: string;
       analyticsToken?: string;
       apiBase?: string;
+      perf?: {
+        mediaPrefetchMode?: "none" | "metadata" | "full";
+        disableRendererDebug?: boolean;
+        avPrefetchTimeoutMs?: number;
+        imagePrefetchTimeoutMs?: number;
+      };
     };
   }
 }

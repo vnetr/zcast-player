@@ -42,11 +42,6 @@ export function applyGpuProfile(app: App) {
         }
     }
 
-    // Apply switches ONCE
-    app.commandLine.appendSwitch('ignore-gpu-blocklist');
-    app.commandLine.appendSwitch('enable-gpu-rasterization');
-    app.commandLine.appendSwitch('enable-zero-copy');
-
     app.commandLine.appendSwitch('enable-features', [...enableFeatures].join(','));
     if (disableFeatures.size) {
         app.commandLine.appendSwitch('disable-features', [...disableFeatures].join(','));
@@ -57,14 +52,17 @@ export function applyGpuProfile(app: App) {
     app.commandLine.appendSwitch('ozone-platform', 'x11'); // belt + suspenders
 
     // ---- GL backend: vendor-aware ----
-    const forceGL = process.env.ZCAST_FORCE_USE_GL;
-    const forceANGLE = process.env.ZCAST_FORCE_USE_ANGLE;
+    const forceGL = (process.env.ZCAST_FORCE_USE_GL || '').trim();
+    const forceANGLE = (process.env.ZCAST_FORCE_USE_ANGLE || '').trim();
     const cliHasUseGl = process.argv.some(a => a.startsWith('--use-gl='));
     const cliHasUseAngle = process.argv.some(a => a.startsWith('--use-angle='));
-    if (forceGL && !cliHasUseGl) {
-        app.commandLine.appendSwitch('use-gl', forceGL);
+    const useGl = forceGL || 'desktop';
+    if (!cliHasUseGl && useGl) {
+        console.log('[zcast][gpu] NVIDIA: use-gl =', useGl);
+        app.commandLine.appendSwitch('use-gl', useGl);
     }
     if (forceANGLE && !cliHasUseAngle) {
+        console.log('[zcast][gpu] NVIDIA: use-angle =', forceANGLE);
         app.commandLine.appendSwitch('use-angle', forceANGLE);
     }
 }

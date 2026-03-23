@@ -1,12 +1,14 @@
 // electron/main.ts
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import { app, BrowserWindow, ipcMain, powerSaveBlocker, screen, session } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as url from 'url';
 import { fileURLToPath } from 'url';
 import { createHash, scryptSync, createDecipheriv } from 'crypto';
 import chokidar from 'chokidar';
 import { execSync } from 'child_process';
+import { applyGpuProfile } from './gpu/index.js';
 
 
 // =======================
@@ -159,56 +161,14 @@ const READ_RETRY_MS = Number(process.env.ZCAST_MANIFEST_RETRY_MS ?? 25);
 const WATCH_USE_POLL = /^(1|true|yes)$/i.test(String(process.env.ZCAST_MANIFEST_WATCH_POLL || ''));
 const WATCH_INTERVAL = Number(process.env.ZCAST_MANIFEST_WATCH_INTERVAL ?? 100);
 
-// -------- GPU / HW accel --------
-const enableFeatures = new Set<string>([
-  'CanvasOopRasterization',
-  'VideoDecodeLinuxZeroCopyGL',
-]);
-
-const disableFeatures = new Set<string>();
-
-const hwDecodeMode = (process.env.ZCAST_HW_DECODE || 'auto').toLowerCase();
-// auto | vaapi | off
-
-function looksLikeNvidiaDisplay(): boolean {
-  // Cheap heuristic: if NVIDIA kernel driver is present, treat as NVIDIA display box
-  // (works for most of your fleet; hybrids can override via env)
-  try {
-    return fs.existsSync('/proc/driver/nvidia/version') ||
-      fs.existsSync('/dev/nvidia0');
-  } catch {
-    return false;
-  }
-}
-
-function hasVaapiPin(): boolean {
-  return !!process.env.LIBVA_DRIVER_NAME || !!process.env.LIBVA_DRM_DEVICE;
-}
-
-// VAAPI decision
-if (hwDecodeMode === 'vaapi') {
-  enableFeatures.add('VaapiVideoDecoder'); // DO NOT add IgnoreDriverChecks
-} else if (hwDecodeMode === 'off') {
-  disableFeatures.add('VaapiVideoDecoder');
-  disableFeatures.add('VaapiIgnoreDriverChecks');
-} else {
-  // auto:
-  // - if NVIDIA display, don't force VAAPI (prevents your 200% CPU thrash)
-  // - if user pinned VAAPI to a render node, allow it
-  if (!looksLikeNvidiaDisplay() || hasVaapiPin()) {
-    enableFeatures.add('VaapiVideoDecoder');
-  }
-}
-
 // -------- Performance / signage hardening --------
-const RAM_GB = 64;
-
 // V8 heap for renderer/main JS.
-// 8192 MB is aggressive but reasonable on a 64 GB signage box.
 const V8_OLD_SPACE_MB = Number(process.env.ZCAST_V8_OLD_SPACE_MB || '8192');
 
 // Disk cache: 1 GB by default for heavy asset usage.
 const DISK_CACHE_SIZE = Number(process.env.ZCAST_DISK_CACHE_SIZE || String(1024 * 1024 * 1024));
+const RASTER_THREAD_COUNT = Math.max(2, Math.min(Number(process.env.ZCAST_RASTER_THREADS || 0) || os.cpus().length, 8));
+const SPAN_DISPLAYS = !/^(0|false|no)$/i.test(String(process.env.ZCAST_SPAN_DISPLAYS || '1'));
 
 // Optional "dangerous" GPU flags only for troubleshooting.
 // Chromium marks some of these as test-oriented; keep OFF by default.
@@ -221,6 +181,8 @@ app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('enable-accelerated-video-decode');
 app.commandLine.appendSwitch('enable-oop-rasterization');
+app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
+app.commandLine.appendSwitch('num-raster-threads', String(RASTER_THREAD_COUNT));
 
 // Disable all the throttling/limits that hurt signage playback
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -237,26 +199,7 @@ app.commandLine.appendSwitch(
   `--max-old-space-size=${V8_OLD_SPACE_MB} --max-semi-space-size=256`
 );
 
-app.commandLine.appendSwitch('enable-features', [...enableFeatures].join(','));
-if (disableFeatures.size) {
-  app.commandLine.appendSwitch('disable-features', [...disableFeatures].join(','));
-}
-
-// GL backend: portable choice
-app.commandLine.appendSwitch('ozone-platform-hint', 'x11');
-app.commandLine.appendSwitch('ozone-platform', 'x11'); // belt + suspenders
-
-// ---- GL backend: vendor-aware ----
-const forceGL = process.env.ZCAST_FORCE_USE_GL;
-const forceANGLE = process.env.ZCAST_FORCE_USE_ANGLE;
-const cliHasUseGl = process.argv.some(a => a.startsWith('--use-gl='));
-const cliHasUseAngle = process.argv.some(a => a.startsWith('--use-angle='));
-if (forceGL && !cliHasUseGl) {
-  app.commandLine.appendSwitch('use-gl', forceGL);
-}
-if (forceANGLE && !cliHasUseAngle) {
-  app.commandLine.appendSwitch('use-angle', forceANGLE);
-}
+applyGpuProfile(app);
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 if (ALLOW_UNSAFE_GPU_FLAGS) {
@@ -323,13 +266,52 @@ function rotationCss(mode: string): string | null {
   `;
 }
 
+function getDisplayWallBounds() {
+  const displays = screen.getAllDisplays();
+  const picked = SPAN_DISPLAYS && displays.length > 1 ? displays : [screen.getPrimaryDisplay()];
+
+  const minX = Math.min(...picked.map((display) => display.bounds.x));
+  const minY = Math.min(...picked.map((display) => display.bounds.y));
+  const maxX = Math.max(...picked.map((display) => display.bounds.x + display.bounds.width));
+  const maxY = Math.max(...picked.map((display) => display.bounds.y + display.bounds.height));
+
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+    displayCount: picked.length,
+  };
+}
+
+let powerSaveBlockerId: number | null = null;
+
+function ensurePowerSaveBlocker() {
+  if (powerSaveBlockerId !== null && powerSaveBlocker.isStarted(powerSaveBlockerId)) return;
+  powerSaveBlockerId = powerSaveBlocker.start('prevent-display-sleep');
+  console.info('[zcast] powerSaveBlocker started:', powerSaveBlockerId);
+}
+
 function createWindow() {
+  const wall = getDisplayWallBounds();
+  console.info('[zcast] display wall bounds:', wall);
+
   win = new BrowserWindow({
-    width: 1920,
-    height: 1080,
-    fullscreen: true,
+    x: wall.x,
+    y: wall.y,
+    width: wall.width,
+    height: wall.height,
+    frame: false,
+    fullscreen: false,
+    kiosk: false,
+    show: false,
     backgroundColor: '#000000',
     autoHideMenuBar: true,
+    hasShadow: false,
+    movable: false,
+    resizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -349,6 +331,16 @@ function createWindow() {
       v8CacheOptions: 'bypassHeatCheck',
     },
 
+  });
+
+  win.setMenuBarVisibility(false);
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  win.setFullScreenable(false);
+  win.setBounds({ x: wall.x, y: wall.y, width: wall.width, height: wall.height }, false);
+  win.once('ready-to-show', () => {
+    win?.show();
+    win?.focus();
   });
 
   const dev = !!process.env.VITE_DEV;
@@ -388,6 +380,8 @@ if (!mf) console.warn('[zcast] No ZCAST_MANIFEST_FILE or --manifest-file specifi
 loadConfigFromTpmOrFile();
 
 app.whenReady().then(() => {
+  ensurePowerSaveBlocker();
+
   // ---- paths ----
   const distIndex = prodIndexHtml();                            // /opt/.../app.asar/dist/index.html
   const distDir = distIndex ? path.dirname(distIndex) : '';     // /opt/.../app.asar/dist
@@ -486,14 +480,19 @@ app.whenReady().then(() => {
   let assetIndex:
     | { items?: Array<{ url: string; urlHash: string; contentHash?: string; name: string }> }
     | null = null;
+  let assetIndexByUrlHash = new Map<string, { url: string; urlHash: string; contentHash?: string; name: string }>();
 
   function loadAssetIndex() {
     try {
       const txt = fs.readFileSync(INDEX_PATH, 'utf-8');
       assetIndex = JSON.parse(txt);
+      assetIndexByUrlHash = new Map(
+        (assetIndex?.items ?? []).map((item) => [item.urlHash, item])
+      );
       if (DEBUG_ASSETS) console.log('[assets] index loaded:', assetIndex?.items?.length ?? 0, 'entries');
     } catch {
       assetIndex = null;
+      assetIndexByUrlHash = new Map();
       if (DEBUG_ASSETS) console.log('[assets] no readable assets-index.json (url-hash aliases only)');
     }
   }
@@ -547,7 +546,7 @@ app.whenReady().then(() => {
       if (fs.existsSync(aliasPath)) return aliasPath;
 
       // 2) content-hash via index
-      const hit = assetIndex?.items?.find((x) => x.urlHash === uhash);
+      const hit = assetIndexByUrlHash.get(uhash);
       if (DEBUG_ASSETS) console.log('[assets]   index hit', hit);
       if (hit?.contentHash) {
         const contentPath = path.join(ASSETS_SUB, 'h', hit.contentHash, hit.name);
@@ -566,18 +565,20 @@ app.whenReady().then(() => {
   // ============================
   // (A) http(s) → local hashed cache (unchanged)
   // ============================
-  const FONT_EXT = /\.(woff2?|ttf|otf)(\?.*)?$/i;
-  session.defaultSession.webRequest.onBeforeRequest(
-    { urls: ['*://*/*', 'file://*/*'] },
-    (details, cb) => {
-      try {
-        if (FONT_EXT.test(details.url)) {
-          console.log('[FONT REQ]', details.resourceType, details.url);
-        }
-      } catch { }
-      cb({});
-    }
-  );
+  if (DEBUG_ASSETS) {
+    const FONT_EXT = /\.(woff2?|ttf|otf)(\?.*)?$/i;
+    session.defaultSession.webRequest.onBeforeRequest(
+      { urls: ['*://*/*', 'file://*/*'] },
+      (details, cb) => {
+        try {
+          if (FONT_EXT.test(details.url)) {
+            console.log('[FONT REQ]', details.resourceType, details.url);
+          }
+        } catch { }
+        cb({});
+      }
+    );
+  }
 
   // ============================
   // (B) SINGLE file:// hook (fonts FIRST, then salvage)
@@ -810,6 +811,16 @@ app.whenReady().then(() => {
   createWindow();
   startWatch();
 
+  const syncWindowBounds = () => {
+    if (!win || win.isDestroyed()) return;
+    const wall = getDisplayWallBounds();
+    console.info('[zcast] refreshing display wall bounds:', wall);
+    win.setBounds({ x: wall.x, y: wall.y, width: wall.width, height: wall.height }, false);
+  };
+  screen.on('display-added', syncWindowBounds);
+  screen.on('display-removed', syncWindowBounds);
+  screen.on('display-metrics-changed', syncWindowBounds);
+
   // If the renderer missed an event during boot, sync once after load.
   const sendOnReady = () => {
     if (win && lastManifestObject) {
@@ -821,6 +832,13 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on('will-quit', () => {
+  if (powerSaveBlockerId !== null && powerSaveBlocker.isStarted(powerSaveBlockerId)) {
+    powerSaveBlocker.stop(powerSaveBlockerId);
+  }
+  powerSaveBlockerId = null;
 });
 
 app.on('window-all-closed', () => app.quit());
