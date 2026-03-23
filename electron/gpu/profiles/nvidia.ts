@@ -52,17 +52,23 @@ export function applyGpuProfile(app: App) {
     app.commandLine.appendSwitch('ozone-platform', 'x11'); // belt + suspenders
 
     // ---- GL backend: vendor-aware ----
-    const forceGL = (process.env.ZCAST_FORCE_USE_GL || '').trim();
-    const forceANGLE = (process.env.ZCAST_FORCE_USE_ANGLE || '').trim();
+    // Inference from the crash logs: this host only exposed EGL+ANGLE as an
+    // allowed implementation, so prefer that path by default on NVIDIA.
+    const forceGL = (process.env.ZCAST_FORCE_USE_GL || process.env.ZCAST_NVIDIA_USE_GL || '').trim();
+    const forceANGLE = (process.env.ZCAST_FORCE_USE_ANGLE || process.env.ZCAST_NVIDIA_USE_ANGLE || '').trim();
     const cliHasUseGl = process.argv.some(a => a.startsWith('--use-gl='));
     const cliHasUseAngle = process.argv.some(a => a.startsWith('--use-angle='));
-    const useGl = forceGL || 'desktop';
+    const useGl = forceGL || 'egl-angle';
+    const useAngle = useGl === 'egl-angle'
+        ? (forceANGLE || 'default')
+        : forceANGLE;
+
     if (!cliHasUseGl && useGl) {
         console.log('[zcast][gpu] NVIDIA: use-gl =', useGl);
         app.commandLine.appendSwitch('use-gl', useGl);
     }
-    if (forceANGLE && !cliHasUseAngle) {
-        console.log('[zcast][gpu] NVIDIA: use-angle =', forceANGLE);
-        app.commandLine.appendSwitch('use-angle', forceANGLE);
+    if (!cliHasUseAngle && useAngle) {
+        console.log('[zcast][gpu] NVIDIA: use-angle =', useAngle);
+        app.commandLine.appendSwitch('use-angle', useAngle);
     }
 }

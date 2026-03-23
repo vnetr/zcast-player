@@ -182,6 +182,18 @@ if (DISABLE_HW_ACCEL) {
   app.commandLine.appendSwitch('disable-gpu');
   app.commandLine.appendSwitch('disable-gpu-compositing');
 } else {
+  app.disableDomainBlockingFor3DAPIs();
+  for (const conflictingSwitch of [
+    'disable-gpu',
+    'disable-gpu-compositing',
+    'disable-software-rasterizer',
+  ]) {
+    if (app.commandLine.hasSwitch(conflictingSwitch)) {
+      console.warn('[zcast][gpu] removing conflicting switch:', conflictingSwitch);
+      app.commandLine.removeSwitch(conflictingSwitch);
+    }
+  }
+
   // Apply switches ONCE
   app.commandLine.appendSwitch('ignore-gpu-blocklist');
   app.commandLine.appendSwitch('enable-gpu-rasterization');
@@ -842,6 +854,27 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+if (!DISABLE_HW_ACCEL) {
+  app.on('gpu-info-update', async () => {
+    try {
+      console.info('[zcast][gpu] feature status:', app.getGPUFeatureStatus());
+    } catch (e) {
+      console.warn('[zcast][gpu] failed to read feature status:', e);
+    }
+    try {
+      console.info('[zcast][gpu] basic info:', await app.getGPUInfo('basic'));
+    } catch (e) {
+      console.warn('[zcast][gpu] failed to read basic info:', e);
+    }
+  });
+}
+
+app.on('child-process-gone', (_event, details) => {
+  if (details.type === 'GPU') {
+    console.error('[zcast][gpu] GPU child process gone:', details);
+  }
 });
 
 app.on('will-quit', () => {
