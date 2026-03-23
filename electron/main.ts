@@ -170,6 +170,9 @@ const DISK_CACHE_SIZE = Number(process.env.ZCAST_DISK_CACHE_SIZE || String(1024 
 const RASTER_THREAD_COUNT = Math.max(2, Math.min(Number(process.env.ZCAST_RASTER_THREADS || 0) || os.cpus().length, 8));
 const SPAN_DISPLAYS = !/^(0|false|no)$/i.test(String(process.env.ZCAST_SPAN_DISPLAYS || '1'));
 const DISABLE_HW_ACCEL = /^(1|true|yes)$/i.test(String(process.env.ZCAST_DISABLE_HW_ACCEL || ''));
+const DISABLE_GPU_SANDBOX = /^(1|true|yes)$/i.test(String(process.env.ZCAST_DISABLE_GPU_SANDBOX || ''));
+const NO_SANDBOX = /^(1|true|yes)$/i.test(String(process.env.ZCAST_NO_SANDBOX || ''));
+const IN_PROCESS_GPU = /^(1|true|yes)$/i.test(String(process.env.ZCAST_IN_PROCESS_GPU || ''));
 
 // Optional "dangerous" GPU flags only for troubleshooting.
 // Chromium marks some of these as test-oriented; keep OFF by default.
@@ -182,6 +185,15 @@ if (DISABLE_HW_ACCEL) {
   app.commandLine.appendSwitch('disable-gpu');
   app.commandLine.appendSwitch('disable-gpu-compositing');
 } else {
+  if (NO_SANDBOX) {
+    app.commandLine.appendSwitch('no-sandbox');
+  } else if (DISABLE_GPU_SANDBOX) {
+    app.commandLine.appendSwitch('disable-gpu-sandbox');
+  }
+  if (IN_PROCESS_GPU) {
+    app.commandLine.appendSwitch('in-process-gpu');
+  }
+
   app.disableDomainBlockingFor3DAPIs();
   for (const conflictingSwitch of [
     'disable-gpu',
@@ -222,6 +234,16 @@ app.commandLine.appendSwitch(
 if (!DISABLE_HW_ACCEL) {
   applyGpuProfile(app);
 }
+
+console.info('[zcast][gpu] startup toggles:', {
+  disableHwAccel: DISABLE_HW_ACCEL,
+  disableGpuSandbox: DISABLE_GPU_SANDBOX,
+  noSandbox: NO_SANDBOX,
+  inProcessGpu: IN_PROCESS_GPU,
+  forceUseGl: process.env.ZCAST_FORCE_USE_GL || '',
+  forceUseAngle: process.env.ZCAST_FORCE_USE_ANGLE || '',
+  hwDecode: process.env.ZCAST_HW_DECODE || '',
+});
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 if (!DISABLE_HW_ACCEL && ALLOW_UNSAFE_GPU_FLAGS) {
