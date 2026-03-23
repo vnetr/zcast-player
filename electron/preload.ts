@@ -37,6 +37,7 @@ try {
   console.log("[preload] starting");
 
   const perf = {
+    disableHwAccel: envFlag("ZCAST_DISABLE_HW_ACCEL", false),
     mediaPrefetchMode: mediaPrefetchModeFromEnv(),
     disableRendererDebug: disableRendererDebugFromEnv(),
     avPrefetchTimeoutMs: envNumber("ZCAST_AV_PREFETCH_TIMEOUT_MS", 750),

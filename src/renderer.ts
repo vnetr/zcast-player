@@ -12,6 +12,7 @@ declare global {
       analyticsToken?: string;
       apiBase?: string;
       perf?: {
+        disableHwAccel?: boolean;
         mediaPrefetchMode?: "none" | "metadata" | "full";
         disableRendererDebug?: boolean;
         avPrefetchTimeoutMs?: number;

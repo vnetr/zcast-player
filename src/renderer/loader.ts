@@ -8,6 +8,8 @@ const PATCH_LAYOUT_NO_DOC_CALL =
   /console\.error\(\s*"\[ERROR\]\s*No document found for layout renderer\."\s*\)/g;
 const PATCH_PLAYLIST_LAYOUT_ITEM_FRAMERATE =
   /\.frameRate=\$\{Math\.max\(this\.frameRate\|\|30,30\)\}/g;
+const PATCH_PLAYLIST_LAYOUT_ITEM_PLAYBACK_MODE =
+  /\.playbackMode=\$\{"gpu"\}/g;
 
 // Track whether a renderer kind has been loaded
 const loaded: Record<RendererKind, boolean> = { layout: false, playlist: false };
@@ -17,6 +19,7 @@ const loading: Partial<Record<RendererKind, Promise<void>>> = {};
 type MediaPrefetchMode = 'none' | 'metadata' | 'full';
 
 type PerfTuning = {
+  disableHwAccel: boolean;
   mediaPrefetchMode: MediaPrefetchMode;
   disableRendererDebug: boolean;
   avPrefetchTimeoutMs: number;
@@ -31,6 +34,7 @@ function getPerfTuning(): PerfTuning {
       : 'none';
 
   return {
+    disableHwAccel: perf.disableHwAccel === true,
     mediaPrefetchMode,
     disableRendererDebug: perf.disableRendererDebug !== false,
     avPrefetchTimeoutMs:
@@ -275,6 +279,10 @@ async function importVendor(kind: RendererKind) {
       PATCH_PLAYLIST_LAYOUT_ITEM_FRAMERATE,
       '.frameRate=${this.frameRate||30}'
     );
+    src = src.replace(
+      PATCH_PLAYLIST_LAYOUT_ITEM_PLAYBACK_MODE,
+      '.playbackMode=${window.zcast?.perf?.disableHwAccel ? "cpu" : "gpu"}'
+    );
   }
 
   // Avoid duplicate custom element registrations
@@ -331,10 +339,11 @@ export function createRendererEl(kind: RendererKind): BaseRendererEl {
   (el.style as any).backfaceVisibility = 'hidden';
 
   // Reasonable defaults for both renderers
+  const perf = getPerfTuning();
   el.zoomFactor = 1;
   el.frameRate = 30;
   el.editingMode = 'false';
-  el.playbackMode = 'gpu';
+  el.playbackMode = perf.disableHwAccel ? 'cpu' : 'gpu';
   el.currentTimestamp = 0;
 
   return el as BaseRendererEl;

@@ -169,20 +169,28 @@ const V8_OLD_SPACE_MB = Number(process.env.ZCAST_V8_OLD_SPACE_MB || '8192');
 const DISK_CACHE_SIZE = Number(process.env.ZCAST_DISK_CACHE_SIZE || String(1024 * 1024 * 1024));
 const RASTER_THREAD_COUNT = Math.max(2, Math.min(Number(process.env.ZCAST_RASTER_THREADS || 0) || os.cpus().length, 8));
 const SPAN_DISPLAYS = !/^(0|false|no)$/i.test(String(process.env.ZCAST_SPAN_DISPLAYS || '1'));
+const DISABLE_HW_ACCEL = /^(1|true|yes)$/i.test(String(process.env.ZCAST_DISABLE_HW_ACCEL || ''));
 
 // Optional "dangerous" GPU flags only for troubleshooting.
 // Chromium marks some of these as test-oriented; keep OFF by default.
 const ALLOW_UNSAFE_GPU_FLAGS = /^(1|true|yes)$/i.test(String(process.env.ZCAST_UNSAFE_GPU_FLAGS || ''));
 
 
-// Apply switches ONCE
-app.commandLine.appendSwitch('ignore-gpu-blocklist');
-app.commandLine.appendSwitch('enable-gpu-rasterization');
-app.commandLine.appendSwitch('enable-zero-copy');
-app.commandLine.appendSwitch('enable-accelerated-video-decode');
-app.commandLine.appendSwitch('enable-oop-rasterization');
-app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
-app.commandLine.appendSwitch('num-raster-threads', String(RASTER_THREAD_COUNT));
+if (DISABLE_HW_ACCEL) {
+  console.warn('[zcast][gpu] hardware acceleration disabled by ZCAST_DISABLE_HW_ACCEL');
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch('disable-gpu');
+  app.commandLine.appendSwitch('disable-gpu-compositing');
+} else {
+  // Apply switches ONCE
+  app.commandLine.appendSwitch('ignore-gpu-blocklist');
+  app.commandLine.appendSwitch('enable-gpu-rasterization');
+  app.commandLine.appendSwitch('enable-zero-copy');
+  app.commandLine.appendSwitch('enable-accelerated-video-decode');
+  app.commandLine.appendSwitch('enable-oop-rasterization');
+  app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
+  app.commandLine.appendSwitch('num-raster-threads', String(RASTER_THREAD_COUNT));
+}
 
 // Disable all the throttling/limits that hurt signage playback
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -199,10 +207,12 @@ app.commandLine.appendSwitch(
   `--max-old-space-size=${V8_OLD_SPACE_MB} --max-semi-space-size=256`
 );
 
-applyGpuProfile(app);
+if (!DISABLE_HW_ACCEL) {
+  applyGpuProfile(app);
+}
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
-if (ALLOW_UNSAFE_GPU_FLAGS) {
+if (!DISABLE_HW_ACCEL && ALLOW_UNSAFE_GPU_FLAGS) {
   app.commandLine.appendSwitch('disable-gpu-watchdog');
   app.commandLine.appendSwitch('disable-gpu-process-crash-limit');
 }
@@ -317,7 +327,7 @@ function createWindow() {
       nodeIntegration: false,
       enableBlinkFeatures: 'WebXR,WebXRIncubations',
       preload: path.join(__dirname, 'preload.js'),
-      webgl: true,
+      webgl: !DISABLE_HW_ACCEL,
       backgroundThrottling: false,
 
       // Signage-friendly security posture
