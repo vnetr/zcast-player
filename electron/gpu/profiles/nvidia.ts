@@ -52,16 +52,22 @@ export function applyGpuProfile(app: App) {
     app.commandLine.appendSwitch('ozone-platform', 'x11'); // belt + suspenders
 
     // ---- GL backend: vendor-aware ----
-    // Inference from the crash logs: this host only exposed EGL+ANGLE as an
-    // allowed implementation, so prefer that path by default on NVIDIA.
+    // Chromium/ANGLE's Linux guidance uses:
+    //   --use-cmd-decoder=passthrough --use-gl=angle --use-angle=gl|gles|vulkan
+    // Keep env overrides first so host-specific tuning still wins.
     const forceGL = (process.env.ZCAST_FORCE_USE_GL || process.env.ZCAST_NVIDIA_USE_GL || '').trim();
     const forceANGLE = (process.env.ZCAST_FORCE_USE_ANGLE || process.env.ZCAST_NVIDIA_USE_ANGLE || '').trim();
+    const forceCmdDecoder = (process.env.ZCAST_FORCE_USE_CMD_DECODER || process.env.ZCAST_NVIDIA_USE_CMD_DECODER || '').trim();
     const cliHasUseGl = process.argv.some(a => a.startsWith('--use-gl='));
     const cliHasUseAngle = process.argv.some(a => a.startsWith('--use-angle='));
-    const useGl = forceGL || 'egl-angle';
-    const useAngle = useGl === 'egl-angle'
-        ? (forceANGLE || 'default')
+    const cliHasUseCmdDecoder = process.argv.some(a => a.startsWith('--use-cmd-decoder='));
+    const useGl = forceGL || 'angle';
+    const useAngle = (useGl === 'angle' || useGl === 'egl-angle')
+        ? (forceANGLE || 'gl')
         : forceANGLE;
+    const useCmdDecoder = useGl === 'angle'
+        ? (forceCmdDecoder || 'passthrough')
+        : forceCmdDecoder;
 
     if (!cliHasUseGl && useGl) {
         console.log('[zcast][gpu] NVIDIA: use-gl =', useGl);
@@ -70,5 +76,9 @@ export function applyGpuProfile(app: App) {
     if (!cliHasUseAngle && useAngle) {
         console.log('[zcast][gpu] NVIDIA: use-angle =', useAngle);
         app.commandLine.appendSwitch('use-angle', useAngle);
+    }
+    if (!cliHasUseCmdDecoder && useCmdDecoder) {
+        console.log('[zcast][gpu] NVIDIA: use-cmd-decoder =', useCmdDecoder);
+        app.commandLine.appendSwitch('use-cmd-decoder', useCmdDecoder);
     }
 }
