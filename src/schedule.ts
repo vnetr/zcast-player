@@ -7,6 +7,7 @@ const DEFAULT_SLOT_MS = 15_000;   // if layout/playlist has no timeline
 const MIN_SLOT_MS = 2_000;        // never switch faster than this
 const MAX_SLOT_MS = 5 * 60_000;   // protect against crazy timelines
 const MIN_RECHECK_MS = 100;       // keep schedule boundary reactions tight
+const PUBLISHED_STATUS = 'ffffffff-ffff-ffff-ffff-fffffffffffe';
 // ----------------------------
 
 // ---------- LOGGING MODE (runtime-tunable via localStorage) ----------
@@ -58,6 +59,7 @@ type NewItem = {
   timeZone?: string;
   name?: string;        // schedule name (often present)
   scheduleName?: string;
+  status?: unknown;
   playContinuously?: boolean;
   // pass-through fields ignored by the engine
 };
@@ -129,6 +131,27 @@ function allowedToday(
   if (workingDays) return ['mo','tu','we','th','fr'].includes(today);
   if (weekend)     return ['sa','su'].includes(today);
   return true;
+}
+
+function hasStatusValue(status: unknown): boolean {
+  return String(status ?? '').trim().length > 0;
+}
+
+function isPublishedStatus(status: unknown): boolean {
+  return String(status ?? '').trim().toLowerCase() === PUBLISHED_STATUS;
+}
+
+function isPublishedItem(item: NewItem): boolean {
+  const scheduleHasStatus = hasStatusValue(item.status);
+  const mediaHasStatus = hasStatusValue(item.media?.status);
+
+  const schedulePublished = scheduleHasStatus
+    ? isPublishedStatus(item.status)
+    : !mediaHasStatus || isPublishedStatus(item.media?.status);
+
+  const mediaPublished = !mediaHasStatus || isPublishedStatus(item.media?.status);
+
+  return schedulePublished && mediaPublished;
 }
 
 // ---------- Duration extraction ----------
@@ -284,11 +307,12 @@ export class ScheduleEngine {
       const todayCode = dayCodeFromLuxon(now.weekday);
       const allowedDay = allowedToday(todayCode, d.days, d.workingDays, d.weekend);
       const withinDayWindow = now >= dayStart && now <= dayEnd;
+      const published = isPublishedItem(d);
 
       const isRenderable =
         !!d.media && (d.media.type === 'layout' || d.media.type === 'playlist');
 
-      const active = isRenderable && withinDates && allowedDay && withinDayWindow;
+      const active = published && isRenderable && withinDates && allowedDay && withinDayWindow;
 
       // compute next change moment for this item
       let next: DateTime | null = null;
